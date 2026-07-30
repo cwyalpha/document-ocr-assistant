@@ -1,0 +1,13 @@
+# Kylin V10 ARM64 command-line runtime.
+#
+# Qt for Python only publishes Linux ARM64 wheels for glibc 2.39, while Kylin
+# V10 SP1 uses glibc 2.28. The ARM64 release is therefore intentionally a
+# native command-line package and does not install PySide6.
+rapidocr==3.9.1
+onnxruntime==1.23.2
+PyMuPDF==1.26.7
+Pillow==12.1.0
+numpy==2.2.6
+opencv-python==4.13.0.90
+rarfile==4.2
+py7zr==1.1.3

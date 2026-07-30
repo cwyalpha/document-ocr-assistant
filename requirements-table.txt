@@ -1,0 +1,3 @@
+# Non-VLM, ONNX-only table structure pipeline. The SLANet-plus ONNX model
+# must be prepared at build time; the installed client never downloads it.
+rapid-table==3.0.2
