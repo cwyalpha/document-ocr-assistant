@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import sys
 import threading
 import time
@@ -15,12 +16,14 @@ from PySide6.QtCore import (
     Qt,
     QThread,
     QTimer,
+    QUrl,
     Signal,
     Slot,
 )
 from PySide6.QtGui import (
     QColor,
     QCursor,
+    QDesktopServices,
     QGuiApplication,
     QImage,
     QKeySequence,
@@ -48,6 +51,58 @@ from PySide6.QtWidgets import (
 from ..history import HistoryStore
 from ..ocr_engine import OcrEngine
 from ..text_format import blocks_to_text
+
+
+def macos_screen_capture_access_granted() -> bool:
+    """Return whether this app may read pixels from other macOS apps."""
+    if sys.platform != "darwin":
+        return True
+    try:
+        core_graphics = ctypes.CDLL(
+            "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+        )
+        preflight = core_graphics.CGPreflightScreenCaptureAccess
+        preflight.argtypes = []
+        preflight.restype = ctypes.c_bool
+        return bool(preflight())
+    except (AttributeError, OSError):
+        # The app targets macOS 12+, where this API is available. Falling back
+        # to the actual capture keeps the feature usable on unusual runtimes.
+        return True
+
+
+def request_macos_screen_capture_access() -> bool:
+    """Ask macOS for screen-recording access and return the current result."""
+    if sys.platform != "darwin":
+        return True
+    try:
+        core_graphics = ctypes.CDLL(
+            "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+        )
+        request = core_graphics.CGRequestScreenCaptureAccess
+        request.argtypes = []
+        request.restype = ctypes.c_bool
+        return bool(request())
+    except (AttributeError, OSError):
+        return False
+
+
+def image_is_fully_black(image: QImage) -> bool:
+    """Detect the opaque black frame macOS returns when capture is denied."""
+    if image.isNull() or image.width() <= 0 or image.height() <= 0:
+        return True
+    sample = image.scaled(
+        32,
+        18,
+        Qt.AspectRatioMode.IgnoreAspectRatio,
+        Qt.TransformationMode.FastTransformation,
+    )
+    for y in range(sample.height()):
+        for x in range(sample.width()):
+            color = sample.pixelColor(x, y)
+            if color.red() > 3 or color.green() > 3 or color.blue() > 3:
+                return False
+    return True
 
 
 class GlobalHotkey(QWidget):
@@ -358,6 +413,12 @@ class CaptureOverlay(QWidget):
             raise RuntimeError("没有可用显示器。")
         self.screen = screen
         self.background = screen.grabWindow(0)
+        if self.background.isNull():
+            raise RuntimeError("未能读取屏幕画面。")
+        if sys.platform == "darwin" and image_is_fully_black(
+            self.background.toImage()
+        ):
+            raise RuntimeError("macOS 返回了黑色屏幕画面。")
         super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         # A capture overlay is single-use. Deleting it on close prevents a
@@ -759,6 +820,8 @@ class ScreenshotPage(QWidget):
             or self._capture_pending
         ):
             return
+        if not self._ensure_capture_access():
+            return
         self._capture_pending = True
         top_level = self.window()
         self._restore_main_window = top_level.isVisible()
@@ -777,6 +840,12 @@ class ScreenshotPage(QWidget):
         except Exception as exc:
             self._capture_pending = False
             self._restore_after_capture()
+            if sys.platform == "darwin" and (
+                not macos_screen_capture_access_granted()
+                or "黑色屏幕画面" in str(exc)
+            ):
+                self._show_macos_capture_permission_help()
+                return
             self.show_error(str(exc))
             return
         self.overlay = overlay
@@ -785,6 +854,39 @@ class ScreenshotPage(QWidget):
         overlay.cancelled.connect(self._capture_cancelled)
         overlay.destroyed.connect(self._overlay_destroyed)
         overlay.show_capture()
+
+    def _ensure_capture_access(self) -> bool:
+        if macos_screen_capture_access_granted():
+            return True
+        self.status.setText("需要开启 macOS 录屏权限")
+        if request_macos_screen_capture_access():
+            return True
+        self._show_macos_capture_permission_help()
+        return False
+
+    def _show_macos_capture_permission_help(self) -> None:
+        self.status.setText("需要开启 macOS 录屏权限")
+        message = QMessageBox(self)
+        message.setWindowTitle("需要录屏权限")
+        message.setIcon(QMessageBox.Icon.Information)
+        message.setText("文档OCR助手尚未获得 macOS 录屏权限。")
+        message.setInformativeText(
+            "未授权时 macOS 只会返回黑色画面，因此无法截图或识别文字。\n\n"
+            "请在“隐私与安全性 → 录屏与系统录音”中允许“文档OCR助手”，"
+            "然后完全退出并重新打开应用。"
+        )
+        settings_button = message.addButton(
+            "打开系统设置", QMessageBox.ButtonRole.ActionRole
+        )
+        message.addButton("稍后", QMessageBox.ButtonRole.RejectRole)
+        message.exec()
+        if message.clickedButton() is settings_button:
+            QDesktopServices.openUrl(
+                QUrl(
+                    "x-apple.systempreferences:"
+                    "com.apple.preference.security?Privacy_ScreenCapture"
+                )
+            )
 
     @Slot()
     def _overlay_destroyed(self) -> None:

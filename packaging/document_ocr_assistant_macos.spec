@@ -82,8 +82,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleDisplayName": "文档OCR助手",
         "CFBundleName": "文档OCR助手",
-        "CFBundleShortVersionString": "0.1.0",
-        "CFBundleVersion": "1",
+        "CFBundleShortVersionString": "0.1.1",
+        "CFBundleVersion": "2",
         "LSMinimumSystemVersion": "12.0",
         "NSHighResolutionCapable": True,
         "NSHumanReadableCopyright": "Copyright © 2026 Document OCR Assistant",
