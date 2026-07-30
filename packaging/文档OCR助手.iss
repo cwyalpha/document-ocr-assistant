@@ -8,7 +8,7 @@
 [Setup]
 AppId={{B94C3D14-7C90-4F0D-B319-5BFF88E10F62}
 AppName=文档OCR助手
-AppVersion=0.1.0
+AppVersion=0.1.1
 AppPublisher=DocumentOCR
 DefaultDirName={localappdata}\Programs\文档OCR助手
 DefaultGroupName=文档OCR助手
@@ -35,4 +35,3 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 
 [Run]
 Filename: "{app}\app\文档OCR助手.exe"; Description: "启动文档OCR助手"; Flags: nowait postinstall skipifsilent
-
