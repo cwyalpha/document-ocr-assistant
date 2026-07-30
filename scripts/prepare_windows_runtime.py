@@ -49,7 +49,7 @@ def find_unrar(root: Path) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prepare Windows OCR portable runtime")
     parser.add_argument("--components-dir", type=Path, required=True)
-    parser.add_argument("--localkb-windows-root", type=Path, required=True)
+    parser.add_argument("--windows-runtime-root", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--table-model", type=Path, required=True)
     parser.add_argument("--unrar", type=Path)
@@ -65,7 +65,7 @@ def main() -> int:
         output / "models" / "table" / "slanet-plus.onnx",
         TABLE_MODEL_HASH,
     )
-    unrar = args.unrar.resolve() if args.unrar else find_unrar(args.localkb_windows_root.resolve())
+    unrar = args.unrar.resolve() if args.unrar else find_unrar(args.windows_runtime_root.resolve())
     archive_target = output / "bin" / "archive" / "unrar.exe"
     archive_target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(unrar, archive_target)
@@ -78,4 +78,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

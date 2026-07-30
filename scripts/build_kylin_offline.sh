@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPONENTS_DIR="${OCR_OFFLINE_COMPONENTS:-$ROOT/../localkb/tool_kylin_x86/offline_components}"
+COMPONENTS_DIR="${OCR_OFFLINE_COMPONENTS:-$ROOT/offline_components}"
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python3)}"
 BUILD_VENV="${OCR_BUILD_VENV:-$ROOT/.build-venv}"
 CACHE_DIR="$ROOT/.build-cache"
@@ -15,7 +15,7 @@ if [ "$(uname -s)" != "Linux" ] || [ "$(uname -m)" != "x86_64" ]; then
   exit 2
 fi
 if [ ! -d "$COMPONENTS_DIR" ]; then
-  echo "[error] 找不到 LocalKB 离线组件目录：$COMPONENTS_DIR" >&2
+  echo "[error] 找不到离线组件目录：$COMPONENTS_DIR" >&2
   exit 2
 fi
 if ! command -v objdump >/dev/null 2>&1; then
