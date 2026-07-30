@@ -106,7 +106,7 @@ Windows 版自动探测本机 Office：DOC/DOCX 默认优先 Microsoft Word，WP
 
 ## 安装 macOS Apple Silicon 版
 
-1. 从 GitHub Releases 下载 `文档OCR助手-macos-arm64.dmg`。该版本要求 macOS 12 或更高版本，仅支持 M1/M2/M3/M4/M5 等 Apple Silicon Mac，不支持 Intel Mac。
+1. 从 GitHub Releases 下载 `document-ocr-assistant-macos-arm64.dmg`。该版本要求 macOS 12 或更高版本，仅支持 M1/M2/M3/M4/M5 等 Apple Silicon Mac，不支持 Intel Mac。
 2. 双击打开 DMG，将“文档OCR助手.app”拖入其中的“Applications”快捷方式，然后推出安装镜像。
 3. 首次启动时，由于当前公开包使用 ad-hoc 签名且未做 Apple 公证，macOS 可能阻止打开。进入“系统设置 → 隐私与安全性”，在安全提示处选择“仍要打开”，按系统提示确认后再次启动。
 4. 第一次使用截图 OCR 时，在“系统设置 → 隐私与安全性 → 屏幕与系统音频录制”中允许“文档OCR助手”，然后重新启动应用。
