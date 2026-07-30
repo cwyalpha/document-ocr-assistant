@@ -38,7 +38,7 @@
 
 ## 离线组件来源
 
-LibreOffice、PP-OCRv6 Medium 模型、7-Zip 和 unrar 均从 `localkb/tool_kylin_x86/offline_components` 读取。LibreOffice DEB 由项目脚本直接解析到普通用户目录，没有调用 apt、dpkg、dnf 或 rpm。
+LibreOffice、PP-OCRv6 Medium 模型、7-Zip 和 unrar 均从预先准备的 `offline_components/` 目录读取。LibreOffice DEB 由项目脚本直接解析到普通用户目录，没有调用 apt、dpkg、dnf 或 rpm。
 
 SLANet-plus 在构建阶段固定为 RapidTable v2.0.0 模型，SHA-256 为：
 

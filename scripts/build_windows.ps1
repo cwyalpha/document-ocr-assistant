@@ -1,16 +1,15 @@
 param(
     [string]$Python = "python",
     [string]$ComponentsDir = "",
-    [string]$LocalKbWindowsRoot = "",
+    [string]$WindowsRuntimeRoot = "",
     [string]$BuildVenv = "",
     [switch]$SkipDependencyInstall
 )
 
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$WebSource = Split-Path $Root -Parent
-if (-not $ComponentsDir) { $ComponentsDir = Join-Path $WebSource "localkb\tool_kylin_x86\offline_components" }
-if (-not $LocalKbWindowsRoot) { $LocalKbWindowsRoot = Join-Path $WebSource "localkb\tool" }
+if (-not $ComponentsDir) { $ComponentsDir = Join-Path $Root "offline_components" }
+if (-not $WindowsRuntimeRoot) { $WindowsRuntimeRoot = Join-Path $ComponentsDir "windows-runtime" }
 if (-not $BuildVenv) { $BuildVenv = Join-Path $Root ".build-venv-windows" }
 $VenvPython = Join-Path $BuildVenv "Scripts\python.exe"
 $Cache = Join-Path $Root ".build-cache"
@@ -20,8 +19,8 @@ $PyiDist = Join-Path $Root "build\windows\pyi-dist"
 $PyiWork = Join-Path $Root "build\windows\pyi-work"
 
 if (-not [Environment]::Is64BitOperatingSystem) { throw "Windows x86_64 构建需要 64 位系统。" }
-if (-not (Test-Path $ComponentsDir)) { throw "找不到 LocalKB 离线组件：$ComponentsDir" }
-if (-not (Test-Path $LocalKbWindowsRoot)) { throw "找不到 LocalKB Windows 实现：$LocalKbWindowsRoot" }
+if (-not (Test-Path $ComponentsDir)) { throw "找不到离线组件：$ComponentsDir" }
+if (-not (Test-Path $WindowsRuntimeRoot)) { throw "找不到 Windows 运行时组件：$WindowsRuntimeRoot" }
 if (-not (Test-Path $VenvPython)) { & $Python -m venv $BuildVenv }
 if ($LASTEXITCODE) { throw "无法创建 Windows 构建环境。" }
 
@@ -48,7 +47,7 @@ Copy-Item (Join-Path $Root "packaging\启动文档OCR助手.bat") (Join-Path $Pa
 
 & $VenvPython (Join-Path $Root "scripts\prepare_windows_runtime.py") `
     --components-dir $ComponentsDir `
-    --localkb-windows-root $LocalKbWindowsRoot `
+    --windows-runtime-root $WindowsRuntimeRoot `
     --output-root $PackageRoot `
     --table-model $TableModel
 
