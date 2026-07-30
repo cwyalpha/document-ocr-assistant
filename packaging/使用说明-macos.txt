@@ -1,0 +1,16 @@
+文档OCR助手 macOS arm64 版
+
+运行方式：
+1. 打开 DMG，将“文档OCR助手.app”拖到“Applications”。
+2. 第一次启动若 macOS 提示来源未知，请在“系统设置 → 隐私与安全性”中确认打开。
+3. 使用截图识别时，按系统提示授予“屏幕与系统音频录制”权限；授权后可能需要重启应用。
+
+功能说明：
+- 图片、PDF、文件夹、ZIP、7Z、TAR/TAR.GZ/TGZ 的 OCR 与表格识别均在本机离线执行。
+- OCR 使用 PP-OCRv6 Medium，表格识别使用 SLANet-plus，二者均通过 ONNX Runtime 运行。
+- 全局截图快捷键默认为 Control+Option+O，也可从托盘菜单或应用内进入截图识别。
+- DOC/DOCX/WPS 转换需要另行安装 macOS 版 LibreOffice；应用会自动查找 /Applications/LibreOffice.app。
+- 常见非加密 RAR 可使用 macOS 自带的 libarchive；多卷、加密或特殊压缩 RAR 建议另行安装 unrar 或 unar。
+
+本构建为 Apple Silicon（arm64）版，适用于 M1/M2/M3/M4/M5 等 M 系列 Mac，不适用于 Intel Mac。
+当前包使用临时（ad-hoc）签名，未做 Apple 公证；对外公开分发前应使用 Developer ID 证书重新签名并公证。
