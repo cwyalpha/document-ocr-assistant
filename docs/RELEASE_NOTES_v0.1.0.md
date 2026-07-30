@@ -6,9 +6,8 @@
 
 ### macOS Apple Silicon
 
-- `文档OCR助手-macos-arm64.dmg`：推荐安装包。
-- `文档OCR助手-macos-arm64.zip`：免 DMG 目录压缩包。
-- `SHA256SUMS-macos-arm64.txt`：macOS 包校验值。
+- `document-ocr-assistant-macos-arm64.dmg`：推荐安装包。
+- `document-ocr-assistant-macos-arm64.zip`：免 DMG 目录压缩包。
 
 要求 macOS 12 或更高版本，仅支持 M1/M2/M3/M4/M5 等 Apple Silicon Mac。安装方法见 README 的“安装 macOS Apple Silicon 版”。
 
@@ -16,11 +15,12 @@
 
 ### Kylin V10 ARM64
 
-- `文档OCR助手-kylin-v10-arm64-cli.run`：推荐的自解压命令行包。
-- `文档OCR助手-kylin-v10-arm64-cli.tar.gz`：目录压缩包。
-- `SHA256SUMS-kylin-arm64.txt`：Kylin ARM64 包校验值。
+- `document-ocr-assistant-kylin-v10-arm64-cli.run`：推荐的自解压命令行包。
+- `document-ocr-assistant-kylin-v10-arm64-cli.tar.gz`：目录压缩包。
 
 ARM64 包已在原生 `macrosan/kylin:v10-sp1` aarch64 容器中验证 PP-OCRv6 图片 OCR、TXT/Markdown 输出、随包 LibreOffice 6.0.6.1 和 DOCX 转换。该版本为命令行版，不包含图形界面。
+
+四个程序包统一使用 `SHA256SUMS-v0.1.0.txt` 校验。GitHub 下载文件使用稳定的 ASCII 名称，包内应用和目录继续使用中文名称。
 
 ## 后续资产
 
