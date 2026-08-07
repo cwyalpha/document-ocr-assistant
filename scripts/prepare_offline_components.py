@@ -145,6 +145,16 @@ def install_libreoffice(components: Path, output_root: Path) -> Path:
             raise RuntimeError("LibreOffice runtime was not found after package extraction")
         shutil.copytree(candidates[-1], destination, symlinks=True)
 
+    # LibreOffice's optional Python macro loader embeds the vendor's Python
+    # 3.8 runtime. On Kylin V10 it can segfault while registering services,
+    # before an ordinary Writer conversion starts. OCR only needs document
+    # import/export, not Python macros, so exclude those optional services.
+    services = destination / "program" / "services"
+    for name in ("pyuno.rdb", "scriptproviderforpython.rdb"):
+        component = services / name
+        if component.is_file():
+            component.rename(component.with_suffix(component.suffix + ".disabled"))
+
     for name in ("soffice", "soffice.bin"):
         executable = destination / "program" / name
         if executable.is_file():
@@ -208,21 +218,48 @@ def install_archive_tools(components: Path, output_root: Path) -> list[Path]:
 
 
 def verify_libreoffice(soffice: Path) -> None:
-    environment = os.environ.copy()
-    environment.setdefault("SAL_USE_VCLPLUGIN", "gen")
-    completed = subprocess.run(
-        [str(soffice), "--headless", "--version"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        timeout=30,
-        check=False,
-        env=environment,
-    )
-    if completed.returncode:
-        detail = (completed.stderr or completed.stdout).strip()
-        raise RuntimeError(f"Bundled LibreOffice self-check failed: {detail}")
-    print(f"[offline] {completed.stdout.strip()}")
+    with tempfile.TemporaryDirectory(prefix="document_ocr_lo_verify_") as temporary:
+        root = Path(temporary)
+        home = root / "home"
+        output = root / "output"
+        profile = root / "profile"
+        home.mkdir()
+        output.mkdir()
+        source = root / "smoke.html"
+        source.write_text(
+            "<html><body><p>Document OCR LibreOffice smoke test</p></body></html>",
+            encoding="utf-8",
+        )
+        environment = os.environ.copy()
+        environment.setdefault("SAL_USE_VCLPLUGIN", "svp")
+        environment["HOME"] = str(home)
+        environment["XDG_CONFIG_HOME"] = str(home / ".config")
+        completed = subprocess.run(
+            [
+                str(soffice),
+                "--headless",
+                "--nologo",
+                "--nodefault",
+                "--norestore",
+                f"-env:UserInstallation={profile.resolve().as_uri()}",
+                "--convert-to",
+                "txt:Text",
+                "--outdir",
+                str(output),
+                str(source),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=60,
+            check=False,
+            env=environment,
+        )
+        converted = output / "smoke.txt"
+        if completed.returncode or not converted.is_file():
+            detail = (completed.stderr or completed.stdout).strip()
+            raise RuntimeError(f"Bundled LibreOffice conversion self-check failed: {detail}")
+        print("[offline] LibreOffice headless conversion self-check passed")
 
 
 def parse_args() -> argparse.Namespace:

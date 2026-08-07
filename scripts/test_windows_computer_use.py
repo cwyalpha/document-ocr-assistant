@@ -120,7 +120,10 @@ def main() -> int:
         file_dialog.wait("visible enabled", timeout=10)
         filename_edit = file_dialog.child_window(auto_id="1148", control_type="Edit").wrapper_object()
         filename_edit.set_edit_text(str(input_path))
-        file_dialog.child_window(auto_id="1", control_type="SplitButton").wrapper_object().invoke()
+        # Windows 11 exposes the Open control differently across shell-dialog
+        # revisions (Button, SplitButton, or nested controls with the same
+        # automation id). Enter in the filename field is stable across them.
+        filename_edit.type_keys("{ENTER}")
         file_dialog.wait_not("exists", timeout=20)
 
         input_cell = window.child_window(title=input_path.name, control_type="DataItem")

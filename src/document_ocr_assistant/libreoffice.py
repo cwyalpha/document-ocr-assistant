@@ -79,6 +79,22 @@ def _run_conversion(source: Path, target_format: str, output_suffix: str, timeou
             str(local_source),
         ]
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        environment = os.environ.copy()
+        if os.name != "nt":
+            # The portable LibreOffice build must not probe an X11/Wayland
+            # display when the OCR client is used from a headless Kylin
+            # session. Keep its per-run state inside the temporary directory
+            # as well, so conversion remains isolated and fully offline.
+            home = root / "home"
+            config = root / "config"
+            cache = root / "cache"
+            home.mkdir()
+            config.mkdir()
+            cache.mkdir()
+            environment.setdefault("SAL_USE_VCLPLUGIN", "svp")
+            environment["HOME"] = str(home)
+            environment["XDG_CONFIG_HOME"] = str(config)
+            environment["XDG_CACHE_HOME"] = str(cache)
         try:
             completed = subprocess.run(
                 command,
@@ -87,6 +103,7 @@ def _run_conversion(source: Path, target_format: str, output_suffix: str, timeou
                 timeout=timeout,
                 check=False,
                 creationflags=creationflags,
+                env=environment,
             )
         except subprocess.TimeoutExpired as exc:
             raise LibreOfficeError(f"LibreOffice 转换超过 {timeout} 秒。") from exc
