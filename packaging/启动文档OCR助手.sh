@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export DOCUMENT_OCR_ROOT="$ROOT"
-export SAL_USE_VCLPLUGIN="${SAL_USE_VCLPLUGIN:-gen}"
+export SAL_USE_VCLPLUGIN="${SAL_USE_VCLPLUGIN:-svp}"
 export QT_AUTO_SCREEN_SCALE_FACTOR="${QT_AUTO_SCREEN_SCALE_FACTOR:-1}"
 
 APP="$ROOT/app/文档OCR助手/文档OCR助手"
@@ -12,4 +12,3 @@ if [ ! -x "$APP" ]; then
   exit 2
 fi
 exec "$APP" "$@"
-
