@@ -1,9 +1,12 @@
+import os
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
 ROOT = Path(SPECPATH).resolve().parent
+EDITION = os.environ.get("DOCUMENT_OCR_BUILD_EDITION", "full")
+BUILD_INFO = os.environ.get("DOCUMENT_OCR_BUILD_INFO", "")
 
 
 def without_bundled_models(entries):
@@ -16,7 +19,16 @@ def without_bundled_models(entries):
 
 datas = without_bundled_models(collect_data_files("rapidocr"))
 datas += without_bundled_models(collect_data_files("rapid_table"))
+if BUILD_INFO:
+    datas += [(BUILD_INFO, ".")]
 hiddenimports = collect_submodules("rapidocr") + collect_submodules("rapid_table")
+excludes = ["PySide6", "paddle", "paddleocr", "torch", "tensorflow"]
+if EDITION == "ocr":
+    excludes += [
+        "document_ocr_assistant.libreoffice",
+        "document_ocr_assistant.office_documents",
+        "document_ocr_assistant.office_windows",
+    ]
 system_binaries = [
     (str(path), ".")
     for path in (
@@ -36,7 +48,7 @@ analysis = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["PySide6", "paddle", "paddleocr", "torch", "tensorflow"],
+    excludes=excludes,
     noarchive=False,
     optimize=1,
 )

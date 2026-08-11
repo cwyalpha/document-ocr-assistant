@@ -14,7 +14,15 @@ def runtime_roots() -> list[Path]:
         roots.append(Path(configured))
     if getattr(sys, "frozen", False):
         executable = Path(sys.executable)
-        roots.extend([executable.parent, executable.parent.parent])
+        bundle_root = Path(getattr(sys, "_MEIPASS", executable.parent))
+        roots.extend(
+            [
+                bundle_root,
+                executable.parent,
+                executable.parent.parent,
+                executable.parent.parent.parent,
+            ]
+        )
         if sys.platform == "darwin":
             # PyInstaller places application data in Contents/Resources.
             roots.append(executable.parent.parent / "Resources")
@@ -69,6 +77,16 @@ def find_ppocrv6_models() -> dict[str, Path] | None:
         if all(path.is_file() for path in result.values()):
             return result
     return None
+
+
+def find_orientation_model() -> Path | None:
+    return find_file(
+        ("DOCUMENT_OCR_ORIENTATION_MODEL",),
+        (
+            "models/orientation/rapid_orientation.onnx",
+            "bin/rapidorientation/models/rapid_orientation.onnx",
+        ),
+    )
 
 
 def find_table_model() -> Path | None:

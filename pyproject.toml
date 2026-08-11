@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "document-ocr-assistant"
-version = "0.1.1"
+version = "0.2.0"
 description = "Kylin, Windows, and macOS offline desktop OCR client"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"

@@ -26,6 +26,14 @@ PPOCRV6_MEDIUM_HASHES = {
     "ch_ppocr_mobile_v2.0_cls_mobile.onnx": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c",
 }
 TABLE_MODEL_HASH = "d57a942af6a2f57d6a4a0372573c696a2379bf5857c45e2ac69993f3b334514b"
+ORIENTATION_MODEL_HASH = "2f62c9bfb830a0b417241269fde7ef2d0ad5446c0ed2b8af33b1f6543545e8e2"
+LIBREOFFICE_VERSION = "7.6.7.2"
+LIBREOFFICE_HASHES = {
+    f"LibreOffice_{LIBREOFFICE_VERSION}_Linux_x86-64_deb.tar.gz":
+        "5fbd379bd9cedb037fa00b6e7e830619bff503a9451bc321e2b4e8d646081920",
+    f"LibreOffice_{LIBREOFFICE_VERSION}_Linux_x86-64_deb_langpack_zh-CN.tar.gz":
+        "80f8707ae9e7e72ed6a397724d876999233ec9d7a85f8c3fbb018621db95eb15",
+}
 
 
 def _sha256(path: Path) -> str:
@@ -111,18 +119,20 @@ def _extract_deb_bundle(bundle: Path, target: Path) -> int:
 
 
 def _find_libreoffice_bundles(components: Path) -> tuple[Path, Path | None]:
-    mains = sorted(
-        path
-        for path in components.glob("LibreOffice_7.*_Linux_x86-64_deb.tar.gz")
-        if "_langpack_" not in path.name and "_helppack_" not in path.name
-    )
-    if not mains:
-        raise FileNotFoundError("LocalKB LibreOffice 7.x x86-64 deb bundle was not found")
-    main = mains[-1]
-    version = main.name.removeprefix("LibreOffice_").split("_", 1)[0]
+    main = components / f"LibreOffice_{LIBREOFFICE_VERSION}_Linux_x86-64_deb.tar.gz"
     language = components / (
-        f"LibreOffice_{version}_Linux_x86-64_deb_langpack_zh-CN.tar.gz"
+        f"LibreOffice_{LIBREOFFICE_VERSION}_Linux_x86-64_deb_langpack_zh-CN.tar.gz"
     )
+    if not main.is_file():
+        raise FileNotFoundError(f"缺少固定版本 LibreOffice：{main}")
+    for bundle in (main, language):
+        if bundle.is_file():
+            actual = _sha256(bundle)
+            expected = LIBREOFFICE_HASHES[bundle.name]
+            if actual != expected:
+                raise RuntimeError(
+                    f"SHA-256 mismatch for {bundle.name}: expected {expected}, got {actual}"
+                )
     return main, language if language.is_file() else None
 
 
@@ -168,7 +178,12 @@ def install_libreoffice(components: Path, output_root: Path) -> Path:
     return soffice
 
 
-def install_models(components: Path, output_root: Path, table_model: Path | None) -> None:
+def install_models(
+    components: Path,
+    output_root: Path,
+    table_model: Path | None,
+    orientation_model: Path | None,
+) -> None:
     source = components / "rapidocr-ppocrv6-medium"
     destination = output_root / "models" / "ppocrv6-medium"
     for name, expected in PPOCRV6_MEDIUM_HASHES.items():
@@ -184,6 +199,13 @@ def install_models(components: Path, output_root: Path, table_model: Path | None
             TABLE_MODEL_HASH,
         )
         print(f"[offline] SLANet-plus -> {output_root / 'models' / 'table'}")
+    if orientation_model:
+        _copy_verified(
+            orientation_model,
+            output_root / "models" / "orientation" / "rapid_orientation.onnx",
+            ORIENTATION_MODEL_HASH,
+        )
+        print(f"[offline] page orientation -> {output_root / 'models' / 'orientation'}")
 
 
 def install_archive_tools(components: Path, output_root: Path) -> list[Path]:
@@ -267,6 +289,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--components-dir", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--table-model", type=Path)
+    parser.add_argument("--orientation-model", type=Path)
     parser.add_argument("--skip-libreoffice", action="store_true")
     parser.add_argument("--skip-models", action="store_true")
     parser.add_argument("--skip-archive-tools", action="store_true")
@@ -285,7 +308,9 @@ def main() -> int:
     if not args.skip_libreoffice:
         soffice = install_libreoffice(components, output_root)
     if not args.skip_models:
-        install_models(components, output_root, args.table_model)
+        install_models(
+            components, output_root, args.table_model, args.orientation_model
+        )
     if not args.skip_archive_tools:
         install_archive_tools(components, output_root)
     if soffice and not args.no_verify:

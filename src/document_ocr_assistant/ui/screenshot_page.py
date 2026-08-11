@@ -49,7 +49,11 @@ from PySide6.QtWidgets import (
 )
 
 from ..history import HistoryStore
+from ..models import ProcessingOptions
 from ..ocr_engine import OcrEngine
+from ..orientation import OrientationEngine
+from ..processors import load_image_bgr
+from ..settings import AppSettings
 from ..text_format import blocks_to_text
 
 
@@ -708,10 +712,16 @@ class ScreenshotOcrWorker(QThread):
     succeeded = Signal(str)
     failed = Signal(str)
 
-    def __init__(self, image: QImage, engine: OcrEngine) -> None:
+    def __init__(
+        self,
+        image: QImage,
+        engine: OcrEngine,
+        options: ProcessingOptions | None = None,
+    ) -> None:
         super().__init__()
         self.image = image
         self.engine = engine
+        self.options = options
 
     def run(self) -> None:
         try:
@@ -720,8 +730,21 @@ class ScreenshotOcrWorker(QThread):
             buffer.open(QIODevice.OpenModeFlag.WriteOnly)
             self.image.save(buffer, "PNG")
             buffer.close()
-            blocks = self.engine.recognize(bytes(data))
-            self.succeeded.emit(blocks_to_text(blocks, "natural"))
+            payload = bytes(data)
+            if self.options is None:
+                # Keep the worker independently testable with a minimal OCR stub.
+                blocks = self.engine.recognize(payload)
+                self.succeeded.emit(blocks_to_text(blocks, "natural"))
+                return
+            image = load_image_bgr(payload)
+            oriented = OrientationEngine().orient(
+                image,
+                self.options.page_orientation,
+                self.options.orientation_confidence,
+            )
+            blocks = self.engine.recognize(oriented.image, options=self.options)
+            blocks = [block for block in blocks if block.score >= self.options.text_score]
+            self.succeeded.emit(blocks_to_text(blocks, self.options.layout_mode))
         except Exception as exc:
             self.failed.emit(str(exc))
 
@@ -761,10 +784,16 @@ class ScreenshotResultDialog(QDialog):
 class ScreenshotPage(QWidget):
     history_changed = Signal()
 
-    def __init__(self, history: HistoryStore, engine: OcrEngine) -> None:
+    def __init__(
+        self,
+        history: HistoryStore,
+        engine: OcrEngine,
+        settings: AppSettings | None = None,
+    ) -> None:
         super().__init__()
         self.history = history
         self.engine = engine
+        self.settings = settings
         self.overlay: CaptureOverlay | None = None
         self.worker: ScreenshotOcrWorker | None = None
         self._restore_main_window = False
@@ -914,7 +943,11 @@ class ScreenshotPage(QWidget):
     def recognize_capture(self, image: QImage) -> None:
         self._restore_after_capture()
         self.status.setText("正在识别截图…")
-        self.worker = ScreenshotOcrWorker(image, self.engine)
+        self.worker = ScreenshotOcrWorker(
+            image,
+            self.engine,
+            self.settings.processing_options() if self.settings else None,
+        )
         self.worker.succeeded.connect(self.show_result)
         self.worker.failed.connect(self.show_error)
         self.worker.start()

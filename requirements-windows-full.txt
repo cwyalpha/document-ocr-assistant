@@ -1,0 +1,2 @@
+# Windows full-edition Office automation dependency. OCR edition excludes it.
+pywin32==311

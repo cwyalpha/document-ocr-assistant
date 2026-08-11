@@ -5,14 +5,14 @@ import re
 from html.parser import HTMLParser
 from typing import Iterable
 
-from .models import OcrBlock, TableResult
+from .models import LayoutMode, OcrBlock, TableResult
 
 
-def sort_blocks_reading_order(blocks: Iterable[OcrBlock]) -> list[OcrBlock]:
+def _sort_lines(blocks: Iterable[OcrBlock]) -> list[list[OcrBlock]]:
     """Sort OCR boxes into a stable top-to-bottom, column-aware reading order."""
     values = list(blocks)
     if len(values) < 2:
-        return values
+        return [values] if values else []
     heights = sorted(max(1.0, block.bounds[3] - block.bounds[1]) for block in values)
     median_height = heights[len(heights) // 2]
     line_tolerance = max(4.0, median_height * 0.55)
@@ -28,16 +28,74 @@ def sort_blocks_reading_order(blocks: Iterable[OcrBlock]) -> list[OcrBlock]:
         else:
             lines.append([block])
     lines.sort(key=lambda line: min(value.bounds[1] for value in line))
-    result: list[OcrBlock] = []
     for line in lines:
-        result.extend(sorted(line, key=lambda value: value.bounds[0]))
+        line.sort(key=lambda value: value.bounds[0])
+    return lines
+
+
+def _split_columns(blocks: list[OcrBlock]) -> list[list[OcrBlock]]:
+    if len(blocks) < 4:
+        return [blocks]
+    heights = sorted(max(1.0, block.bounds[3] - block.bounds[1]) for block in blocks)
+    median_height = heights[len(heights) // 2]
+    intervals = sorted((block.bounds[0], block.bounds[2]) for block in blocks)
+    merged: list[list[float]] = []
+    for start, end in intervals:
+        if not merged or start > merged[-1][1] + median_height:
+            merged.append([start, end])
+        else:
+            merged[-1][1] = max(merged[-1][1], end)
+    if len(merged) <= 1:
+        return [blocks]
+    columns: list[list[OcrBlock]] = [[] for _ in merged]
+    for block in blocks:
+        center = (block.bounds[0] + block.bounds[2]) / 2
+        index = min(
+            range(len(merged)),
+            key=lambda value: abs(center - (merged[value][0] + merged[value][1]) / 2),
+        )
+        columns[index].append(block)
+    return [column for column in columns if column]
+
+
+def sort_blocks_reading_order(
+    blocks: Iterable[OcrBlock], multi_column: bool = True
+) -> list[OcrBlock]:
+    values = list(blocks)
+    columns = _split_columns(values) if multi_column else [values]
+    result: list[OcrBlock] = []
+    for column in columns:
+        for line in _sort_lines(column):
+            result.extend(line)
     return result
 
 
-def blocks_to_text(blocks: Iterable[OcrBlock], mode: str = "natural") -> str:
-    ordered = sort_blocks_reading_order(blocks)
-    if mode == "raw":
+def blocks_to_text(
+    blocks: Iterable[OcrBlock], mode: str = LayoutMode.MULTI_PARAGRAPH.value
+) -> str:
+    values = list(blocks)
+    if mode == LayoutMode.RAW.value:
+        return "\n".join(block.text.strip() for block in values if block.text.strip())
+    multi_column = mode.startswith("multi_")
+    ordered = sort_blocks_reading_order(values, multi_column=multi_column)
+    if mode in {LayoutMode.MULTI_LINES.value, LayoutMode.SINGLE_LINES.value}:
         return "\n".join(block.text.strip() for block in ordered if block.text.strip())
+    if mode == LayoutMode.CODE.value:
+        if not ordered:
+            return ""
+        left = min(block.bounds[0] for block in ordered)
+        widths = [
+            max(1.0, block.bounds[2] - block.bounds[0]) / max(1, len(block.text))
+            for block in ordered
+            if block.text
+        ]
+        char_width = sorted(widths)[len(widths) // 2] if widths else 8.0
+        return "\n".join(
+            " " * max(0, round((block.bounds[0] - left) / char_width))
+            + block.text.rstrip()
+            for block in ordered
+            if block.text.strip()
+        )
     paragraphs: list[str] = []
     current: list[str] = []
     previous: OcrBlock | None = None
