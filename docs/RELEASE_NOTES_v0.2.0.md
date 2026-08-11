@@ -7,7 +7,14 @@
 - OCR 版：只处理图片、PDF、文件夹和包含这些文件的压缩包，不携带任何 Office 转换组件。
 - 完整版：在 OCR 功能之外处理 DOC/DOCX/WPS；Office 依赖策略随平台而异。
 
-本 Release 包含 macOS arm64、Windows x86_64、Kylin V10 x86_64、Kylin V10 ARM64 CLI 四个平台的 OCR 版和完整版，共 8 个主程序包。请使用同一 Release 内的 `SHA256SUMS.txt` 校验下载文件。
+本次先发布 macOS arm64 和 Kylin V10 ARM64 CLI 的 OCR 版与完整版，共 4 个主程序包。Windows x86_64 和 Kylin V10 x86_64 的程序包将在完成原生环境构建与验证后追加到同一 Release。
+
+当前资产及 SHA-256：
+
+- `document-ocr-assistant-0.2.0-macos-arm64-ocr.dmg`：`271f1a32a646b3971e1d3241c78b721ab4e2a34a1b85f5cff1aeb5ee18ad154e`
+- `document-ocr-assistant-0.2.0-macos-arm64-full.dmg`：`d4d6335f033d996db33e3608d68e3468f05652e498fe0ceb714db7cadada02f0`
+- `document-ocr-assistant-0.2.0-kylin-v10-arm64-cli-ocr.run`：`d50863b30b89449d03be8a7836f469f2642b84add15edb61f1b692911d74711f`
+- `document-ocr-assistant-0.2.0-kylin-v10-arm64-cli-full.run`：`7f6b82cc204a350f57e70cf8049fb7806da005b74a001545f607a57b2d35a901`
 
 ## macOS 安装
 
