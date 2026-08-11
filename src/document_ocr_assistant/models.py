@@ -36,6 +36,36 @@ class PdfMode(str, Enum):
     TEXT_ONLY = "text_only"
 
 
+class ProductEdition(str, Enum):
+    OCR = "ocr"
+    FULL = "full"
+
+
+class OcrPreset(str, Enum):
+    FAST = "fast"
+    BALANCED = "balanced"
+    ACCURATE = "accurate"
+    CUSTOM = "custom"
+
+
+class PageOrientation(str, Enum):
+    AUTO = "auto"
+    OFF = "off"
+    ROTATE_0 = "0"
+    ROTATE_90 = "90"
+    ROTATE_180 = "180"
+    ROTATE_270 = "270"
+
+
+class LayoutMode(str, Enum):
+    MULTI_PARAGRAPH = "multi_paragraph"
+    MULTI_LINES = "multi_lines"
+    SINGLE_PARAGRAPH = "single_paragraph"
+    SINGLE_LINES = "single_lines"
+    CODE = "code"
+    RAW = "raw"
+
+
 @dataclass(slots=True)
 class OcrBlock:
     text: str
@@ -92,6 +122,9 @@ class TaskRecord:
     markdown: str = ""
     outputs: list[Path] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    blocks: list[OcrBlock] = field(default_factory=list)
+    raw_text: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -103,6 +136,7 @@ class ProcessResult:
     searchable_pdf_bytes: bytes | None = None
     warnings: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    raw_text: str = ""
 
 
 @dataclass(slots=True)
@@ -114,4 +148,28 @@ class ProcessingOptions:
     searchable_pdf: bool = False
     table_detection: bool = True
     copy_unconverted_files: bool = False
-    layout_mode: str = "natural"
+    layout_mode: str = LayoutMode.MULTI_PARAGRAPH.value
+    ocr_preset: OcrPreset = OcrPreset.BALANCED
+    page_orientation: PageOrientation = PageOrientation.AUTO
+    orientation_confidence: float = 0.35
+    textline_orientation: bool = True
+    pdf_dpi: int = 200
+    max_side_len: int = 2000
+    det_limit_side_len: int = 736
+    det_limit_type: str = "min"
+    det_thresh: float = 0.3
+    det_box_thresh: float = 0.5
+    det_unclip_ratio: float = 1.6
+    text_score: float = 0.5
+    rec_batch_size: int = 6
+    cpu_threads: int = 0
+    page_range: str = ""
+
+    def resolved_ocr_values(self) -> dict[str, int | float]:
+        if self.ocr_preset is OcrPreset.FAST:
+            return {"pdf_dpi": 150, "max_side_len": 1600}
+        if self.ocr_preset is OcrPreset.ACCURATE:
+            return {"pdf_dpi": 300, "max_side_len": 4096}
+        if self.ocr_preset is OcrPreset.BALANCED:
+            return {"pdf_dpi": 200, "max_side_len": 2000}
+        return {"pdf_dpi": self.pdf_dpi, "max_side_len": self.max_side_len}

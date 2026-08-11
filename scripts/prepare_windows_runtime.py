@@ -13,6 +13,7 @@ PPOCRV6_MEDIUM_HASHES = {
     "ch_ppocr_mobile_v2.0_cls_mobile.onnx": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c",
 }
 TABLE_MODEL_HASH = "d57a942af6a2f57d6a4a0372573c696a2379bf5857c45e2ac69993f3b334514b"
+ORIENTATION_MODEL_HASH = "2f62c9bfb830a0b417241269fde7ef2d0ad5446c0ed2b8af33b1f6543545e8e2"
 
 
 def sha256(path: Path) -> str:
@@ -52,6 +53,7 @@ def main() -> int:
     parser.add_argument("--windows-runtime-root", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--table-model", type=Path, required=True)
+    parser.add_argument("--orientation-model", type=Path, required=True)
     parser.add_argument("--unrar", type=Path)
     args = parser.parse_args()
 
@@ -65,12 +67,18 @@ def main() -> int:
         output / "models" / "table" / "slanet-plus.onnx",
         TABLE_MODEL_HASH,
     )
+    copy_verified(
+        args.orientation_model.resolve(),
+        output / "models" / "orientation" / "rapid_orientation.onnx",
+        ORIENTATION_MODEL_HASH,
+    )
     unrar = args.unrar.resolve() if args.unrar else find_unrar(args.windows_runtime_root.resolve())
     archive_target = output / "bin" / "archive" / "unrar.exe"
     archive_target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(unrar, archive_target)
     print(f"[windows] PP-OCRv6 Medium -> {model_target}")
     print(f"[windows] SLANet-plus -> {output / 'models' / 'table'}")
+    print(f"[windows] page orientation -> {output / 'models' / 'orientation'}")
     print(f"[windows] unrar -> {archive_target}")
     print("[windows] LibreOffice intentionally excluded")
     return 0

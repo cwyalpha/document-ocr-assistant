@@ -2,9 +2,19 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSION="0.2.0"
+EDITION="full"
+if [ "${1:-}" = "--edition" ]; then
+  EDITION="${2:-}"
+  shift 2
+fi
+if [ "$EDITION" != "ocr" ] && [ "$EDITION" != "full" ]; then
+  echo "[error] --edition 必须为 ocr 或 full。" >&2
+  exit 2
+fi
 BUILDER_IMAGE="${KYLIN_ARM64_BUILDER_IMAGE:-document-ocr-kylin-arm64-builder:latest}"
 BASE_IMAGE="${KYLIN_ARM64_BASE_IMAGE:-macrosan/kylin:v10-sp1}"
-PACKAGE_NAME="文档OCR助手-kylin-v10-arm64-cli"
+PACKAGE_NAME="document-ocr-assistant-$VERSION-kylin-v10-arm64-cli-$EDITION"
 PACKAGE_ROOT="$ROOT/dist/$PACKAGE_NAME"
 TEST_ROOT="$ROOT/build/kylin-arm64/clean-container-test"
 
@@ -30,6 +40,7 @@ docker build \
 
 docker run --rm \
   --platform linux/arm64 \
+  -e DOCUMENT_OCR_BUILD_EDITION="$EDITION" \
   -v "$ROOT:/workspace" \
   "$BUILDER_IMAGE" \
   /bin/bash /workspace/scripts/build_kylin_arm64_inside.sh
@@ -38,11 +49,13 @@ rm -rf "$TEST_ROOT"
 mkdir -p "$TEST_ROOT"
 docker run --rm \
   --platform linux/arm64 \
+  -e DOCUMENT_OCR_PACKAGE_NAME="$PACKAGE_NAME" \
+  -e DOCUMENT_OCR_EDITION="$EDITION" \
   -v "$ROOT:/workspace" \
   "$BASE_IMAGE" \
   /bin/bash -lc '
 set -euo pipefail
-PACKAGE="/workspace/dist/文档OCR助手-kylin-v10-arm64-cli"
+PACKAGE="/workspace/dist/$DOCUMENT_OCR_PACKAGE_NAME"
 TESTS="/workspace/build/kylin-arm64/tests"
 OUTPUT="/workspace/build/kylin-arm64/clean-container-test"
 
@@ -53,14 +66,16 @@ test "$(uname -m)" = "aarch64"
   --no-table
 grep -R -q "Kylin ARM64" "$OUTPUT/ocr-output"
 
-"$PACKAGE/bin/libreoffice/program/soffice" --headless --version \
-  > "$OUTPUT/libreoffice-version.txt"
-grep -q "LibreOffice 6.0.6.1" "$OUTPUT/libreoffice-version.txt"
-"$PACKAGE/文档OCR助手命令行.sh" \
-  "$TESTS/kylin-arm64-office.docx" \
-  -o "$OUTPUT/office-output" \
-  --no-table
-grep -R -q "Kylin ARM64 LibreOffice bundled conversion test" "$OUTPUT/office-output"
+if [ "$DOCUMENT_OCR_EDITION" = "full" ]; then
+  "$PACKAGE/bin/libreoffice/program/soffice" --headless --version \
+    > "$OUTPUT/libreoffice-version.txt"
+  grep -q "LibreOffice 6.0.6.1" "$OUTPUT/libreoffice-version.txt"
+  "$PACKAGE/文档OCR助手命令行.sh" \
+    "$TESTS/kylin-arm64-office.docx" \
+    -o "$OUTPUT/office-output" \
+    --no-table
+  grep -R -q "Kylin ARM64 LibreOffice bundled conversion test" "$OUTPUT/office-output"
+fi
 '
 
 echo "[done] Kylin ARM64 干净容器命令行测试通过：$TEST_ROOT"

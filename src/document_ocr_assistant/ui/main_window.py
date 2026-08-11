@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..history import HistoryStore
-from ..office_documents import office_backend_description
+from ..edition import build_info, is_full_edition
 from ..ocr_engine import OcrEngine
 from ..settings import AppSettings, SettingsStore
 from .batch_page import BatchPage
@@ -47,10 +47,13 @@ class SettingsPage(QWidget):
             ("OCR 引擎", "PP-OCRv6 Medium · ONNX Runtime"),
             ("表格引擎", "SLANet-plus · ONNX Runtime · 自动检测可关闭"),
             ("识别语言", "简体中文 + 英文"),
-            ("Office 文档引擎", office_backend_description()),
             ("截图快捷键", settings.hotkey),
             ("隐私", "所有内容均在本机离线处理"),
         ]
+        if is_full_edition():
+            from ..office_documents import office_backend_description
+
+            rows.insert(3, ("Office 文档引擎", office_backend_description()))
         for label, value in rows:
             row = QHBoxLayout()
             key = QLabel(label)
@@ -96,7 +99,7 @@ class MainWindow(QMainWindow):
         self.settings = settings
         self.store = store
         self._really_close = False
-        self.setWindowTitle("文档OCR助手")
+        self.setWindowTitle(f"文档OCR助手（{build_info().display_suffix}）")
         self.setMinimumSize(1080, 720)
         self.resize(1380, 860)
         self.ocr_engine = OcrEngine()
@@ -129,7 +132,7 @@ class MainWindow(QMainWindow):
             logo.setPixmap(application_icon.pixmap(QSize(30, 30)))
         logo.setFixedSize(32, 32)
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title = QLabel("文档OCR助手")
+        title = QLabel(f"文档OCR助手\n{build_info().display_suffix}")
         title.setObjectName("AppTitle")
         brand_row.addWidget(logo)
         brand_row.addWidget(title)
@@ -138,7 +141,9 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.batch_page = BatchPage(self.settings, self.store)
-        self.screenshot_page = ScreenshotPage(self.history_store, self.ocr_engine)
+        self.screenshot_page = ScreenshotPage(
+            self.history_store, self.ocr_engine, self.settings
+        )
         self.history_page = HistoryPage(self.history_store)
         self.settings_page = SettingsPage(self.settings, self.store)
         self.screenshot_page.history_changed.connect(self.history_page.refresh)
@@ -155,7 +160,7 @@ class MainWindow(QMainWindow):
             self.nav_buttons.append(button)
         self.nav_buttons[0].setChecked(True)
         side_layout.addStretch()
-        version = QLabel("离线版 · ONNX")
+        version = QLabel(f"v{build_info().version} · {build_info().edition.value.upper()}")
         version.setObjectName("Muted")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         side_layout.addWidget(version)

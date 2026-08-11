@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import logging
 import os
 import re
@@ -10,9 +9,19 @@ from typing import Callable
 
 import numpy as np
 
-from .office_documents import convert_word
-from .models import InputItem, InputKind, OcrBlock, PdfMode, ProcessResult, ProcessingOptions, TableResult
+from .edition import is_full_edition
+from .models import (
+    InputItem,
+    InputKind,
+    LayoutMode,
+    OcrBlock,
+    PdfMode,
+    ProcessResult,
+    ProcessingOptions,
+    TableResult,
+)
 from .ocr_engine import OcrEngine
+from .orientation import OrientationEngine, blocks_to_original
 from .table_engine import TableEngine
 from .text_format import blocks_to_text, build_markdown, html_document_without_tables_to_text
 
@@ -46,6 +55,34 @@ def _render_pdf_page(page, dpi: int = 200) -> np.ndarray:
     return image[:, :, ::-1].copy()
 
 
+def parse_page_range(value: str, page_count: int) -> list[int]:
+    """Parse a user-facing 1-based page range into sorted zero-based indexes."""
+    if not value.strip():
+        return list(range(page_count))
+    selected: set[int] = set()
+    for raw_part in value.replace("，", ",").split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            start_text, end_text = (item.strip() for item in part.split("-", 1))
+            if not start_text or not end_text:
+                raise ValueError(f"无效页码范围：{part}")
+            start, end = int(start_text), int(end_text)
+            if start > end:
+                raise ValueError(f"页码范围起始值不能大于结束值：{part}")
+            values = range(start, end + 1)
+        else:
+            values = (int(part),)
+        for page_number in values:
+            if page_number < 1 or page_number > page_count:
+                raise ValueError(f"页码 {page_number} 超出文档范围 1-{page_count}")
+            selected.add(page_number - 1)
+    if not selected:
+        raise ValueError("页码范围不能为空。")
+    return sorted(selected)
+
+
 def _is_substantial_pdf_text(text: str) -> bool:
     compact = "".join(text.split())
     if len(compact) < 30:
@@ -75,9 +112,15 @@ def _non_table_text(blocks: list[OcrBlock], tables: list[TableResult], layout_mo
 
 
 class DocumentProcessors:
-    def __init__(self, ocr_engine: OcrEngine | None = None, table_engine: TableEngine | None = None) -> None:
+    def __init__(
+        self,
+        ocr_engine: OcrEngine | None = None,
+        table_engine: TableEngine | None = None,
+        orientation_engine: OrientationEngine | None = None,
+    ) -> None:
         self.ocr = ocr_engine or OcrEngine()
         self.tables = table_engine or TableEngine()
+        self.orientation = orientation_engine or OrientationEngine()
 
     def process(
         self,
@@ -92,6 +135,8 @@ class DocumentProcessors:
         if item.kind is InputKind.PDF:
             return self._process_pdf(item, options, callback, cancelled)
         if item.kind is InputKind.WORD:
+            if not is_full_edition():
+                raise RuntimeError("OCR版不支持 Word/WPS 文档，请下载完整版。")
             return self._process_word(item, options, callback)
         raise RuntimeError(f"没有适用于 {item.kind.value} 的处理器。")
 
@@ -107,20 +152,55 @@ class DocumentProcessors:
         if cancelled and cancelled.is_set():
             raise InterruptedError("任务已取消")
         progress(30, "正在识别文字")
-        blocks = self.ocr.recognize(image)
+        oriented = self.orientation.orient(
+            image, options.page_orientation, options.orientation_confidence
+        )
+        raw_oriented_blocks = self.ocr.recognize(oriented.image, options=options)
+        accepted_oriented_blocks = [
+            block for block in raw_oriented_blocks if block.score >= options.text_score
+        ]
         tables: list[TableResult] = []
-        warnings: list[str] = []
+        warnings: list[str] = [oriented.warning] if oriented.warning else []
         if options.table_detection:
             if self.tables.available:
                 progress(70, "正在检测表格结构")
-                tables = self.tables.analyze(image, blocks)
+                tables = self.tables.analyze(oriented.image, accepted_oriented_blocks)
             else:
                 warnings.append("表格模型不可用，已完成普通文字识别。")
-        text = blocks_to_text(blocks, options.layout_mode)
-        markdown_text = _non_table_text(blocks, tables, options.layout_mode)
+        text = blocks_to_text(accepted_oriented_blocks, options.layout_mode)
+        raw_text = blocks_to_text(raw_oriented_blocks, LayoutMode.RAW.value)
+        markdown_text = _non_table_text(
+            accepted_oriented_blocks, tables, options.layout_mode
+        )
         markdown = build_markdown(markdown_text, tables, item.source_path.stem)
+        blocks = blocks_to_original(raw_oriented_blocks, oriented)
         progress(100, "识别完成")
-        return ProcessResult(text, markdown, blocks, tables, warnings=warnings)
+        return ProcessResult(
+            text,
+            markdown,
+            blocks,
+            tables,
+            warnings=warnings,
+            raw_text=raw_text,
+            metadata={
+                "source_kind": "image",
+                "page_count": 1,
+                "pdf_dpi": None,
+                "pages": [
+                    {
+                        "page_index": 0,
+                        "width": oriented.original_width,
+                        "height": oriented.original_height,
+                        "detected_angle": oriented.detected_angle,
+                        "applied_angle": oriented.applied_angle,
+                        "orientation_confidence": oriented.confidence,
+                        "low_confidence_blocks": sum(
+                            block.score < options.text_score for block in raw_oriented_blocks
+                        ),
+                    }
+                ],
+            },
+        )
 
     def _process_pdf(
         self,
@@ -139,35 +219,110 @@ class DocumentProcessors:
         all_blocks: list[OcrBlock] = []
         all_tables: list[TableResult] = []
         warnings: list[str] = []
+        pages_metadata: list[dict[str, object]] = []
+        raw_page_texts: list[str] = []
         try:
             total_pages = max(1, document.page_count)
+            selected_pages = set(parse_page_range(options.page_range, document.page_count))
+            resolved = options.resolved_ocr_values()
+            pdf_dpi = int(resolved["pdf_dpi"])
             for page_index, page in enumerate(document):
                 if cancelled and cancelled.is_set():
                     raise InterruptedError("任务已取消")
+                if page_index not in selected_pages:
+                    percent = int(((page_index + 1) / total_pages) * 95)
+                    progress(percent, f"已跳过第 {page_index + 1}/{total_pages} 页")
+                    continue
                 native_text = page.get_text("text").strip()
                 has_native_text = _is_substantial_pdf_text(native_text)
                 needs_ocr = options.pdf_mode is PdfMode.FORCE_OCR or (
                     options.pdf_mode is PdfMode.AUTO and not has_native_text
                 )
                 needs_image = needs_ocr or options.table_detection
-                image: np.ndarray | None = _render_pdf_page(page) if needs_image else None
-                blocks: list[OcrBlock] = []
+                image: np.ndarray | None = (
+                    _render_pdf_page(page, dpi=pdf_dpi) if needs_image else None
+                )
+                raw_oriented_blocks: list[OcrBlock] = []
+                accepted_oriented_blocks: list[OcrBlock] = []
+                restored_blocks: list[OcrBlock] = []
+                restored_accepted_blocks: list[OcrBlock] = []
+                oriented = None
                 if image is not None and (needs_ocr or options.table_detection):
-                    blocks = self.ocr.recognize(image, page_index)
-                    all_blocks.extend(blocks)
+                    oriented = self.orientation.orient(
+                        image,
+                        options.page_orientation,
+                        options.orientation_confidence,
+                    )
+                    if oriented.warning:
+                        warnings.append(f"第 {page_index + 1} 页：{oriented.warning}")
+                    raw_oriented_blocks = self.ocr.recognize(
+                        oriented.image, page_index, options
+                    )
+                    accepted_oriented_blocks = [
+                        block
+                        for block in raw_oriented_blocks
+                        if block.score >= options.text_score
+                    ]
+                    restored_blocks = blocks_to_original(raw_oriented_blocks, oriented)
+                    restored_accepted_blocks = blocks_to_original(
+                        accepted_oriented_blocks, oriented
+                    )
+                    all_blocks.extend(restored_blocks)
                 tables: list[TableResult] = []
                 if options.table_detection and image is not None:
                     if self.tables.available:
-                        tables = self.tables.analyze(image, blocks, page_index)
+                        assert oriented is not None
+                        tables = self.tables.analyze(
+                            oriented.image, accepted_oriented_blocks, page_index
+                        )
                         all_tables.extend(tables)
                     elif page_index == 0:
                         warnings.append("表格模型不可用，已跳过 PDF 表格结构识别。")
-                text = blocks_to_text(blocks, options.layout_mode) if needs_ocr else native_text
+                text = (
+                    blocks_to_text(accepted_oriented_blocks, options.layout_mode)
+                    if needs_ocr
+                    else native_text
+                )
                 page_texts.append(text)
-                md_text = _non_table_text(blocks, tables, options.layout_mode) if needs_ocr else native_text
+                raw_page_texts.append(
+                    blocks_to_text(raw_oriented_blocks, LayoutMode.RAW.value)
+                    if needs_ocr
+                    else native_text
+                )
+                md_text = (
+                    _non_table_text(
+                        accepted_oriented_blocks, tables, options.layout_mode
+                    )
+                    if needs_ocr
+                    else native_text
+                )
                 page_markdowns.append(build_markdown(md_text, tables, f"第 {page_index + 1} 页"))
-                if options.searchable_pdf and needs_ocr and blocks and image is not None:
-                    self._insert_searchable_text(page, blocks, image.shape[1], image.shape[0])
+                if (
+                    options.searchable_pdf
+                    and needs_ocr
+                    and restored_accepted_blocks
+                    and image is not None
+                ):
+                    self._insert_searchable_text(
+                        page,
+                        restored_accepted_blocks,
+                        image.shape[1],
+                        image.shape[0],
+                    )
+                pages_metadata.append(
+                    {
+                        "page_index": page_index,
+                        "width": image.shape[1] if image is not None else 0,
+                        "height": image.shape[0] if image is not None else 0,
+                        "native_text": not needs_ocr,
+                        "detected_angle": oriented.detected_angle if oriented else 0,
+                        "applied_angle": oriented.applied_angle if oriented else 0,
+                        "orientation_confidence": oriented.confidence if oriented else 1.0,
+                        "low_confidence_blocks": sum(
+                            block.score < options.text_score for block in raw_oriented_blocks
+                        ),
+                    }
+                )
                 percent = int(((page_index + 1) / total_pages) * 95)
                 progress(percent, f"正在处理第 {page_index + 1}/{total_pages} 页")
             searchable_bytes = None
@@ -181,7 +336,14 @@ class DocumentProcessors:
                 all_tables,
                 searchable_pdf_bytes=searchable_bytes,
                 warnings=warnings,
-                metadata={"page_count": document.page_count},
+                raw_text="\n\n".join(raw_page_texts).strip(),
+                metadata={
+                    "source_kind": "pdf",
+                    "page_count": document.page_count,
+                    "processed_pages": sorted(index + 1 for index in selected_pages),
+                    "pdf_dpi": pdf_dpi,
+                    "pages": pages_metadata,
+                },
             )
         finally:
             document.close()
@@ -213,6 +375,8 @@ class DocumentProcessors:
         self, item: InputItem, options: ProcessingOptions, progress: ProgressCallback
     ) -> ProcessResult:
         progress(15, "正在调用 Microsoft Word/WPS" if os.name == "nt" else "正在启动 LibreOffice")
+        from .office_documents import convert_word
+
         text, html_text = convert_word(item.source_path)
         tables: list[TableResult] = []
         if options.table_detection and html_text:

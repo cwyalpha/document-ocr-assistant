@@ -7,7 +7,14 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from .models import OutputMode, PdfMode, ProcessingOptions
+from .models import (
+    LayoutMode,
+    OcrPreset,
+    OutputMode,
+    PageOrientation,
+    PdfMode,
+    ProcessingOptions,
+)
 
 
 APP_ID = "document-ocr-assistant"
@@ -32,13 +39,29 @@ def data_directory() -> Path:
 
 @dataclass(slots=True)
 class AppSettings:
+    schema_version: int = 2
     output_mode: str = OutputMode.NEW_BATCH_DIRECTORY.value
     output_parent: str = str(Path.home() / "Documents" / "文档OCR输出")
     pdf_mode: str = PdfMode.AUTO.value
     searchable_pdf: bool = False
     table_detection: bool = True
     copy_unconverted_files: bool = False
-    layout_mode: str = "natural"
+    layout_mode: str = LayoutMode.MULTI_PARAGRAPH.value
+    ocr_preset: str = OcrPreset.BALANCED.value
+    page_orientation: str = PageOrientation.AUTO.value
+    orientation_confidence: float = 0.35
+    textline_orientation: bool = True
+    pdf_dpi: int = 200
+    max_side_len: int = 2000
+    det_limit_side_len: int = 736
+    det_limit_type: str = "min"
+    det_thresh: float = 0.3
+    det_box_thresh: float = 0.5
+    det_unclip_ratio: float = 1.6
+    text_score: float = 0.5
+    rec_batch_size: int = 6
+    cpu_threads: int = 0
+    page_range: str = ""
     hotkey: str = "Ctrl+Alt+O"
     close_to_tray: bool = True
     remember_close_choice: bool = False
@@ -54,6 +77,21 @@ class AppSettings:
             table_detection=self.table_detection,
             copy_unconverted_files=self.copy_unconverted_files,
             layout_mode=self.layout_mode,
+            ocr_preset=OcrPreset(self.ocr_preset),
+            page_orientation=PageOrientation(self.page_orientation),
+            orientation_confidence=self.orientation_confidence,
+            textline_orientation=self.textline_orientation,
+            pdf_dpi=self.pdf_dpi,
+            max_side_len=self.max_side_len,
+            det_limit_side_len=self.det_limit_side_len,
+            det_limit_type=self.det_limit_type,
+            det_thresh=self.det_thresh,
+            det_box_thresh=self.det_box_thresh,
+            det_unclip_ratio=self.det_unclip_ratio,
+            text_score=self.text_score,
+            rec_batch_size=self.rec_batch_size,
+            cpu_threads=self.cpu_threads,
+            page_range=self.page_range,
         )
 
 
@@ -68,6 +106,8 @@ class SettingsStore:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return AppSettings()
+        if payload.get("layout_mode") == "natural":
+            payload["layout_mode"] = LayoutMode.MULTI_PARAGRAPH.value
         defaults = asdict(AppSettings())
         values: dict[str, Any] = {key: payload.get(key, value) for key, value in defaults.items()}
         try:

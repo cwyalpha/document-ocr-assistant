@@ -12,6 +12,7 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+from .edition import build_info
 from .runtime import find_app_icon
 from .settings import SettingsStore, data_directory
 from .ui.main_window import MainWindow
@@ -63,6 +64,7 @@ def main() -> int:
             output_mode=OutputMode.NEW_BATCH_DIRECTORY,
             output_parent=report_path.parent / "pipeline-output",
             table_detection=True,
+            searchable_pdf=True,
         )
         saved = ProcessingPipeline().process_item(
             items[0], options, cancelled=threading.Event()
@@ -74,6 +76,8 @@ def main() -> int:
                     "text": "\n".join(entry.result.text for entry in saved),
                     "markdown": "\n".join(entry.result.markdown for entry in saved),
                     "ocr_blocks": sum(len(entry.result.blocks) for entry in saved),
+                    "raw_text": "\n".join(entry.result.raw_text for entry in saved),
+                    "metadata": [entry.result.metadata for entry in saved],
                     "tables": sum(len(entry.result.tables) for entry in saved),
                     "warnings": [
                         warning for entry in saved for warning in entry.result.warnings
@@ -88,8 +92,9 @@ def main() -> int:
     os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     application = QApplication(sys.argv)
-    application.setApplicationName("文档OCR助手")
-    application.setApplicationDisplayName("文档OCR助手")
+    application_name = f"文档OCR助手（{build_info().display_suffix}）"
+    application.setApplicationName(application_name)
+    application.setApplicationDisplayName(application_name)
     application.setOrganizationName("DocumentOCR")
     icon_path = find_app_icon()
     if icon_path:

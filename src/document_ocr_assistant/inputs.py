@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Iterable
 
+from .edition import is_full_edition
 from .models import InputItem, InputKind, PassthroughFile
 
 
@@ -25,11 +26,17 @@ def classify_path(path: Path) -> InputKind:
         return InputKind.IMAGE
     if suffix == ".pdf":
         return InputKind.PDF
-    if suffix in WORD_EXTENSIONS:
+    if suffix in WORD_EXTENSIONS and is_full_edition():
         return InputKind.WORD
     if suffix in ARCHIVE_EXTENSIONS:
         return InputKind.ARCHIVE
     return InputKind.UNSUPPORTED
+
+
+def unsupported_reason(path: Path) -> str:
+    if compound_suffix(path) in WORD_EXTENSIONS and not is_full_edition():
+        return "OCR版不支持 Word/WPS 文档，请下载完整版"
+    return "不支持的文件类型"
 
 
 def _canonical_key(path: Path) -> str:

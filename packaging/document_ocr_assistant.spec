@@ -1,9 +1,13 @@
+import os
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
 ROOT = Path(SPECPATH).resolve().parent
+EDITION = os.environ.get("DOCUMENT_OCR_BUILD_EDITION", "full")
+APP_NAME = "文档OCR助手OCR版" if EDITION == "ocr" else "文档OCR助手完整版"
+BUILD_INFO = os.environ.get("DOCUMENT_OCR_BUILD_INFO", "")
 
 
 def without_bundled_models(entries):
@@ -16,7 +20,16 @@ def without_bundled_models(entries):
 
 datas = without_bundled_models(collect_data_files("rapidocr"))
 datas += without_bundled_models(collect_data_files("rapid_table"))
+if BUILD_INFO:
+    datas += [(BUILD_INFO, ".")]
 hiddenimports = collect_submodules("rapidocr") + collect_submodules("rapid_table")
+excludes = ["paddle", "paddleocr", "torch", "tensorflow"]
+if EDITION == "ocr":
+    excludes += [
+        "document_ocr_assistant.libreoffice",
+        "document_ocr_assistant.office_documents",
+        "document_ocr_assistant.office_windows",
+    ]
 
 analysis = Analysis(
     [str(ROOT / "src" / "document_ocr_assistant_app.py")],
@@ -27,7 +40,7 @@ analysis = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["paddle", "paddleocr", "torch", "tensorflow"],
+    excludes=excludes,
     noarchive=False,
     optimize=1,
 )
@@ -37,7 +50,7 @@ exe = EXE(
     analysis.scripts,
     [],
     exclude_binaries=True,
-    name="文档OCR助手",
+    name=APP_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -56,5 +69,5 @@ collect = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="文档OCR助手",
+    name=APP_NAME,
 )
