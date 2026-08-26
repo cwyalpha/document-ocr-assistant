@@ -6,16 +6,29 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 
-def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     names = [
         "C:/Windows/Fonts/msyhbd.ttc" if bold else "C:/Windows/Fonts/msyh.ttc",
         "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Bold.ttc"
+        if bold
+        else "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc"
+        if bold
+        else "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+        if bold
+        else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"
+        if bold
+        else "/usr/share/fonts/dejavu/DejaVuSans.ttf",
     ]
     for name in names:
         path = Path(name)
         if path.is_file():
             return ImageFont.truetype(str(path), size)
-    raise RuntimeError("未找到用于生成 Windows OCR 测试图片的字体。")
+    return ImageFont.load_default(size=size)
 
 
 def centered(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], text: str, text_font) -> None:

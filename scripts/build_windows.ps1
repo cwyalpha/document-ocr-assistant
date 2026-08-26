@@ -90,6 +90,41 @@ OCR 与表格识别：PP-OCRv6 Medium + SLANet-plus，全部使用 ONNX Runtime 
 $SmokeScreenshot = Join-Path $Root "build\windows\windows-ui-smoke.png"
 $env:DOCUMENT_OCR_UI_SMOKE_SCREENSHOT = $SmokeScreenshot
 $Executable = Join-Path $PackageRoot "app\$AppName.exe"
+
+function Invoke-FrozenCli {
+    param(
+        [Parameter(Mandatory)][string[]]$CliArguments,
+        [string]$StdoutPath = "",
+        [string]$StderrPath = "",
+        [switch]$AllowFailure
+    )
+    $quotedArguments = foreach ($argument in $CliArguments) {
+        '"' + $argument.Replace('"', '\"') + '"'
+    }
+    $startParameters = @{
+        FilePath = $Executable
+        ArgumentList = ($quotedArguments -join ' ')
+        Wait = $true
+        PassThru = $true
+    }
+    if ($StdoutPath) {
+        Remove-Item -LiteralPath $StdoutPath -Force -ErrorAction SilentlyContinue
+        $startParameters.RedirectStandardOutput = $StdoutPath
+    }
+    if ($StderrPath) {
+        Remove-Item -LiteralPath $StderrPath -Force -ErrorAction SilentlyContinue
+        $startParameters.RedirectStandardError = $StderrPath
+    }
+    $frozenProcess = Start-Process @startParameters
+    if (-not $AllowFailure -and $frozenProcess.ExitCode -ne 0) {
+        $detail = if ($StderrPath -and (Test-Path $StderrPath)) {
+            Get-Content -LiteralPath $StderrPath -Raw -Encoding UTF8
+        } else { "" }
+        throw "冻结客户端退出码异常：$($frozenProcess.ExitCode) $detail"
+    }
+    return $frozenProcess
+}
+
 $process = Start-Process -FilePath $Executable -Wait -PassThru
 Remove-Item Env:\DOCUMENT_OCR_UI_SMOKE_SCREENSHOT -ErrorAction SilentlyContinue
 if ($process.ExitCode -ne 0 -or -not (Test-Path $SmokeScreenshot)) { throw "Windows 冻结客户端界面测试失败。" }
@@ -118,8 +153,17 @@ $ReleaseMaterials = Join-Path $PipelineSmokeDir "generated-release-materials"
 foreach ($Angle in @(0, 90, 180, 270)) {
     $DirectionOutput = Join-Path $PipelineSmokeDir "orientation-$Angle"
     $DirectionReport = Join-Path $PipelineSmokeDir "orientation-$Angle.json"
-    & $Executable --cli (Join-Path $ReleaseMaterials "orientation-$Angle.png") -o $DirectionOutput --report-json $DirectionReport --no-table
-    if ($LASTEXITCODE -ne 0 -or -not (Get-ChildItem $DirectionOutput -Recurse -File | Select-String -Pattern 'Document|OCR' -Quiet)) {
+    Invoke-FrozenCli -CliArguments @(
+        '--cli',
+        (Join-Path $ReleaseMaterials "orientation-$Angle.png"),
+        '-o', $DirectionOutput,
+        '--report-json', $DirectionReport,
+        '--no-table'
+    ) | Out-Null
+    $DirectionTextFound = Get-ChildItem $DirectionOutput -Recurse -File |
+        Where-Object { $_.Extension -in '.txt', '.md' } |
+        Select-String -Pattern 'Document|OCR' -Quiet
+    if (-not $DirectionTextFound) {
         throw "Windows 冻结客户端未通过 $Angle 度页面方向测试。"
     }
     $DirectionMetadata = Get-Content -LiteralPath $DirectionReport -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -133,18 +177,29 @@ $OfficeSmokeInput = Join-Path $PipelineSmokeDir "office.docx"
 & $VenvPython (Join-Path $Root "scripts\create_office_smoke_input.py") $OfficeSmokeInput
 if ($Edition -eq "full") {
     $OfficeOutput = Join-Path $PipelineSmokeDir "office-output"
-    & $Executable --cli $OfficeSmokeInput -o $OfficeOutput --no-table
-    if ($LASTEXITCODE -ne 0 -or -not (Get-ChildItem $OfficeOutput -Recurse -File | Select-String -Pattern 'LibreOffice bundled conversion test' -Quiet)) {
+    Invoke-FrozenCli -CliArguments @('--cli', $OfficeSmokeInput, '-o', $OfficeOutput, '--no-table') | Out-Null
+    $OfficeTextFound = Get-ChildItem $OfficeOutput -Recurse -File |
+        Where-Object { $_.Extension -in '.txt', '.md' } |
+        Select-String -Pattern 'LibreOffice bundled conversion test' -Quiet
+    if (-not $OfficeTextFound) {
         throw "Windows 完整版未通过本机 Word/WPS 转换测试。"
     }
 } else {
-    $Refusal = (& $Executable --cli $OfficeSmokeInput --no-table 2>&1 | Out-String)
-    if ($Refusal -notmatch 'OCR版不支持 Word/WPS.*下载完整版') {
+    $RefusalStdout = Join-Path $PipelineSmokeDir "office-refusal-stdout.txt"
+    $RefusalStderr = Join-Path $PipelineSmokeDir "office-refusal-stderr.txt"
+    $RefusalProcess = Invoke-FrozenCli -CliArguments @('--cli', $OfficeSmokeInput, '--no-table') `
+        -StdoutPath $RefusalStdout -StderrPath $RefusalStderr -AllowFailure
+    $Refusal = ((Get-Content -LiteralPath $RefusalStdout,$RefusalStderr -Raw -Encoding UTF8) -join "`n")
+    if ($RefusalProcess.ExitCode -eq 0 -or $Refusal -notmatch 'OCR版不支持 Word/WPS.*下载完整版') {
         throw "Windows OCR 版未清晰拒绝 Word/WPS：$Refusal"
     }
 }
 
-$VersionOutput = & $Executable --cli --version
+$VersionStdout = Join-Path $PipelineSmokeDir "version-stdout.txt"
+$VersionStderr = Join-Path $PipelineSmokeDir "version-stderr.txt"
+Invoke-FrozenCli -CliArguments @('--cli', '--version') `
+    -StdoutPath $VersionStdout -StderrPath $VersionStderr | Out-Null
+$VersionOutput = Get-Content -LiteralPath $VersionStdout -Raw -Encoding UTF8
 if ($VersionOutput -notmatch "\($Edition, windows, x86_64\)") { throw "冻结程序 --version edition 信息不正确：$VersionOutput" }
 if ($Edition -eq "ocr") {
     $Forbidden = Get-ChildItem -LiteralPath $PackageRoot -Recurse -Force | Where-Object {
