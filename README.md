@@ -23,3 +23,6 @@
 [前往 GitHub Releases 下载最新版](https://github.com/cwyalpha/document-ocr-assistant/releases/latest)
 
 各平台当前可用的软件包及版本说明以 Releases 页面为准。
+
+Kylin 的 Docker 构建、离线组件和真机验证方法见
+[`packaging/Kylin-x86_64和ARM64-Docker打包说明.md`](packaging/Kylin-x86_64和ARM64-Docker打包说明.md)。

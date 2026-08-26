@@ -76,7 +76,21 @@ if [ "$DOCUMENT_OCR_EDITION" = "full" ]; then
     --no-table
   grep -R -q "Kylin ARM64 LibreOffice bundled conversion test" "$OUTPUT/office-output"
 fi
+
+RUN_TEST=/tmp/document-ocr-arm64-run-test
+rm -rf "$RUN_TEST"
+mkdir -p "$RUN_TEST"
+cp "/workspace/dist/$DOCUMENT_OCR_PACKAGE_NAME.run" "$RUN_TEST/"
+cd "$RUN_TEST"
+RUN_FILE="$RUN_TEST/$DOCUMENT_OCR_PACKAGE_NAME.run"
+chmod +x "$RUN_FILE"
+RUN_VERSION="$($RUN_FILE --version)"
+if [[ "$RUN_VERSION" != *"($DOCUMENT_OCR_EDITION, kylin-v10, arm64)"* ]]; then
+  echo "[error] ARM64 .run 自解压或版本验证失败：$RUN_VERSION" >&2
+  exit 1
+fi
 '
 
 echo "[done] Kylin ARM64 干净容器命令行测试通过：$TEST_ROOT"
+echo "[done] Kylin ARM64 .run 自解压测试通过。"
 echo "[done] 发布目录：$PACKAGE_ROOT"
