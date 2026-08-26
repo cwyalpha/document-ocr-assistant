@@ -43,8 +43,6 @@
 | 压缩包 | ZIP、RAR、7Z、TAR、TAR.GZ、TGZ |
 | 输出 | TXT、Markdown、可搜索 PDF、识别报告 |
 
-OCR 版专注于图片和 PDF，不携带 Office 转换组件；完整版增加 Word/WPS 文档转换。具体可下载的软件包以 Releases 页面为准。
-
 ## 支持的系统
 
 | 系统 | 架构 | 使用方式 |
