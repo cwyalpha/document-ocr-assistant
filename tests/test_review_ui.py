@@ -6,7 +6,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PIL import Image
-from PySide6.QtWidgets import QApplication, QTableWidgetItem
+from document_ocr_assistant.qt import QApplication, QTableWidgetItem
 
 from document_ocr_assistant.models import InputItem, InputKind, OcrBlock, TaskRecord
 from document_ocr_assistant.settings import AppSettings, SettingsStore

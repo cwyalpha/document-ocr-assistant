@@ -97,18 +97,17 @@ def audit_source(root: Path, audit: Audit) -> None:
         path = root / name
         if path.is_file():
             audit.file(path, name, source=True)
-    image = root / "docs" / "images" / "macos-main-window.png"
-    if image.is_file():
-        try:
-            from PIL import Image
+    try:
+        from PIL import Image
 
+        for image in sorted((root / "docs" / "images").glob("*.png")):
             with Image.open(image) as screenshot:
                 if screenshot.getexif() or screenshot.info:
                     audit.errors.append(
-                        "公开截图仍含元数据：docs/images/macos-main-window.png"
+                        f"公开截图仍含元数据：{image.relative_to(root).as_posix()}"
                     )
-        except Exception as exc:
-            audit.errors.append(f"无法检查公开截图：{exc}")
+    except Exception as exc:
+        audit.errors.append(f"无法检查公开截图：{exc}")
 
 
 def audit_zip(path: Path, audit: Audit, edition: str) -> None:

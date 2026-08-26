@@ -1,15 +1,15 @@
 # Kylin x86_64 与 ARM64 Docker 打包说明
 
-本文说明如何生成 Kylin V10 的 x86_64 图形完整版和 ARM64 命令行版。两个架构不能交叉复用冻结程序、LibreOffice 或压缩工具；PyInstaller 必须在目标架构的 Linux 容器中运行。
+本文说明如何生成 Kylin V10 的 x86_64 与 ARM64 图形完整版。两个架构不能交叉复用冻结程序、Qt、LibreOffice 或压缩工具；PyInstaller 必须在目标架构的 Linux 容器中运行。
 
 ## 产物区别
 
 | 目标 | Docker 平台 | 产物 | 界面 | Office 组件 |
 | --- | --- | --- | --- | --- |
 | Kylin V10 x86_64 | `linux/amd64` | `document-ocr-assistant-0.2.0-kylin-v10-x86_64-full.run` | PySide6 图形界面和 CLI | 离线组件目录中的 LibreOffice 7.6 x86_64 |
-| Kylin V10 ARM64 | `linux/arm64` | `document-ocr-assistant-0.2.0-kylin-v10-arm64-cli-full.run` | 仅 CLI，没有桌面窗口 | Kylin ARM64 仓库中的 LibreOffice 6.0.6.1 |
+| Kylin V10 ARM64 | `linux/arm64` | `document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run` | Qt 5.15 / PySide2 图形界面和 CLI | Kylin ARM64 仓库中的 LibreOffice 6.0.6.1 |
 
-ARM64 当前是命令行版。双击 `.run` 不会出现图形窗口，应在终端执行 `./文件名.run --version` 或传入待识别文件。
+ARM64 使用在 Kylin V10 容器内源码构建的 Qt 5.15.2 与 PySide2 5.15.2.1，以保持 glibc 2.28 兼容；程序同时提供图形界面和命令行入口。
 
 ## 通用要求
 
@@ -121,24 +121,28 @@ bash scripts/build_kylin_arm64_docker.sh --edition full
 输出为：
 
 ```text
-dist/document-ocr-assistant-0.2.0-kylin-v10-arm64-cli-full.run
+dist/document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run
 dist/SHA256SUMS-kylin-arm64-full.txt
 ```
 
-在 Kylin ARM64 真机中从终端测试；当前版本不会弹出 GUI：
+在 Kylin ARM64 真机中验证版本并启动图形界面：
 
 ```bash
-chmod +x document-ocr-assistant-0.2.0-kylin-v10-arm64-cli-full.run
-./document-ocr-assistant-0.2.0-kylin-v10-arm64-cli-full.run --version
+chmod +x document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run
+./document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run --cli --version
 # 预期包含：(full, kylin-v10, arm64)
 
-./document-ocr-assistant-0.2.0-kylin-v10-arm64-cli-full.run input.pdf -o ./ocr-output
+# 启动图形界面
+./document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run
+
+# 命令行 OCR
+./document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run --cli input.pdf -o ./ocr-output
 ```
 
 ## 常见故障
 
 - `.run` 立即退出：先在终端运行并查看错误；确认已 `chmod +x`，再用 `uname -m` 核对架构。
-- ARM64 双击没有窗口：ARM64 产物目前是 CLI 版，这是预期行为。
+- ARM64 双击没有窗口：在终端运行最终 `.run` 查看 Qt/XCB 报错，并确认当前会话是 Kylin 图形桌面而非纯终端环境。
 - `Exec format error`：构建容器架构错误，x86_64 与 ARM64 文件不能混用。
 - `GLIBC_x.y not found`：构建基础系统比目标系统新；必须使用 Kylin V10 基础镜像重新冻结。
 - Qt 报 XCB 库缺失：在 Kylin 桌面安装系统的 `libxkbcommon-x11`、`xcb-util`、`xcb-util-image`、`xcb-util-keysyms`、`xcb-util-renderutil`、`xcb-util-wm` 和 `mesa-libGL`。

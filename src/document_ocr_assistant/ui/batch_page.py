@@ -6,8 +6,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QThread, Qt, Signal, Slot
-from PySide6.QtGui import (
+from ..qt import (
     QColor,
     QDragEnterEvent,
     QDropEvent,
@@ -15,8 +14,6 @@ from PySide6.QtGui import (
     QPainter,
     QPen,
     QTextCursor,
-)
-from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
@@ -38,6 +35,13 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+    QRectF,
+    QThread,
+    Qt,
+    Signal,
+    Slot,
+    event_position,
+    point_from_event,
 )
 
 from ..inputs import collect_passthrough_files, expand_inputs, unsupported_reason
@@ -75,7 +79,7 @@ class OcrPreviewWidget(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setMinimumHeight(230)
-        self.setCursor(Qt.CursorShape.CrossCursor)
+        self.setCursor(Qt.CrossCursor)
         self._image = QImage()
         self._blocks: list[tuple[int, OcrBlock]] = []
         self._selected = -1
@@ -109,7 +113,7 @@ class OcrPreviewWidget(QWidget):
                         pixmap.width,
                         pixmap.height,
                         pixmap.stride,
-                        QImage.Format.Format_RGB888,
+                        QImage.Format_RGB888,
                     ).copy()
                 finally:
                     document.close()
@@ -150,7 +154,7 @@ class OcrPreviewWidget(QWidget):
         self._target = self._image_target()
         if self._image.isNull():
             painter.setPen(self.palette().placeholderText().color())
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "暂无可预览页面")
+            painter.drawText(self.rect(), Qt.AlignCenter, "暂无可预览页面")
             return
         painter.drawImage(self._target, self._image)
         scale_x = self._target.width() / max(1, self._image.width())
@@ -173,12 +177,13 @@ class OcrPreviewWidget(QWidget):
             painter.drawRect(rect)
 
     def mousePressEvent(self, event) -> None:
-        if self._image.isNull() or not self._target.contains(event.position()):
+        position = event_position(event)
+        if self._image.isNull() or not self._target.contains(position):
             return super().mousePressEvent(event)
         scale_x = self._image.width() / max(1.0, self._target.width())
         scale_y = self._image.height() / max(1.0, self._target.height())
-        x = (event.position().x() - self._target.left()) * scale_x
-        y = (event.position().y() - self._target.top()) * scale_y
+        x = (position.x() - self._target.left()) * scale_x
+        y = (position.y() - self._target.top()) * scale_y
         candidates: list[tuple[float, int]] = []
         for index, block in self._blocks:
             x1, y1, x2, y2 = block.bounds
@@ -200,8 +205,8 @@ class DropZone(QFrame):
         super().__init__()
         self.setObjectName("DropZone")
         self.setAcceptDrops(True)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(Qt.PointingHandCursor)
         self.setAccessibleName("添加文件")
         self.setToolTip("点击添加文件，也可以将文件、文件夹或压缩包拖到这里")
         self.setMinimumHeight(128)
@@ -209,19 +214,19 @@ class DropZone(QFrame):
         layout.setContentsMargins(22, 18, 22, 18)
         layout.setSpacing(6)
         icon = QLabel("＋")
-        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon.setAlignment(Qt.AlignCenter)
         icon.setStyleSheet("font-size: 30px; color: #3478F6; font-weight: 300;")
         title = QLabel("拖入文件、文件夹或压缩包")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet("font-size: 17px; font-weight: 650;")
         supported = "图片、PDF"
         if is_full_edition():
             supported += "、DOC/DOCX/WPS"
         subtitle = QLabel(f"支持{supported}、ZIP/RAR/7Z/TAR/TAR.GZ/TGZ")
         subtitle.setObjectName("Muted")
-        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setAlignment(Qt.AlignCenter)
         for label in (icon, title, subtitle):
-            label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            label.setAttribute(Qt.WA_TransparentForMouseEvents)
         layout.addWidget(icon)
         layout.addWidget(title)
         layout.addWidget(subtitle)
@@ -249,8 +254,8 @@ class DropZone(QFrame):
         event.acceptProposedAction()
 
     def mouseReleaseEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(
-            event.position().toPoint()
+        if event.button() == Qt.LeftButton and self.rect().contains(
+            point_from_event(event)
         ):
             self.clicked.emit()
             event.accept()
@@ -258,7 +263,7 @@ class DropZone(QFrame):
         super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event) -> None:
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
             self.clicked.emit()
             event.accept()
             return
@@ -404,7 +409,7 @@ class BatchPage(QWidget):
         import_row.addWidget(clear_button)
         root.addLayout(import_row)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter = QSplitter(Qt.Horizontal)
         table_card = QFrame()
         table_card.setObjectName("Card")
         table_layout = QVBoxLayout(table_card)
@@ -412,8 +417,8 @@ class BatchPage(QWidget):
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(["文件", "类型", "状态", "进度", "输出"])
         self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setColumnWidth(0, 220)
@@ -830,7 +835,7 @@ class BatchPage(QWidget):
             self,
             "压缩包密码",
             f"请输入 {request.path.name} 的密码：",
-            QLineEdit.EchoMode.Password,
+            QLineEdit.Password,
         )
         request.password = password if accepted else None
         request.event.set()
@@ -931,7 +936,7 @@ class BatchPage(QWidget):
             cursor = editor.textCursor()
             cursor.setPosition(start)
             cursor.setPosition(
-                start + len(block.text), QTextCursor.MoveMode.KeepAnchor
+                start + len(block.text), QTextCursor.KeepAnchor
             )
             editor.setTextCursor(cursor)
             editor.ensureCursorVisible()

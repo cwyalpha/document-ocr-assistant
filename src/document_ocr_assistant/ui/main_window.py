@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, QTimer, Qt, Slot
-from PySide6.QtGui import QAction, QCloseEvent, QIcon
-from PySide6.QtWidgets import (
+from ..qt import (
+    QAction,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -18,6 +17,13 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
+    QSize,
+    QTimer,
+    Qt,
+    Slot,
+    QCloseEvent,
+    QIcon,
+    exec_dialog,
 )
 
 from ..history import HistoryStore
@@ -131,7 +137,7 @@ class MainWindow(QMainWindow):
         else:
             logo.setPixmap(application_icon.pixmap(QSize(30, 30)))
         logo.setFixedSize(32, 32)
-        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo.setAlignment(Qt.AlignCenter)
         title = QLabel(f"文档OCR助手\n{build_info().display_suffix}")
         title.setObjectName("AppTitle")
         brand_row.addWidget(logo)
@@ -162,7 +168,7 @@ class MainWindow(QMainWindow):
         side_layout.addStretch()
         version = QLabel(f"v{build_info().version} · {build_info().edition.value.upper()}")
         version.setObjectName("Muted")
-        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        version.setAlignment(Qt.AlignCenter)
         side_layout.addWidget(version)
         layout.addWidget(sidebar)
         layout.addWidget(self.stack, 1)
@@ -172,7 +178,7 @@ class MainWindow(QMainWindow):
         self.tray = QSystemTrayIcon(self)
         icon = self.windowIcon()
         if icon.isNull():
-            icon = self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView)
+            icon = self.style().standardIcon(QStyle.SP_FileDialogContentsView)
         self.tray.setIcon(icon)
         menu = QMenu()
         open_action = QAction("打开文档OCR助手", self)
@@ -186,7 +192,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(exit_action)
         self.tray.setContextMenu(menu)
-        self.tray.activated.connect(lambda reason: self.show_main_window() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
+        self.tray.activated.connect(lambda reason: self.show_main_window() if reason == QSystemTrayIcon.Trigger else None)
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray.show()
 
@@ -223,19 +229,19 @@ class MainWindow(QMainWindow):
     def _ask_close_behavior(self) -> tuple[str, bool]:
         message = QMessageBox(self)
         message.setWindowTitle("关闭文档OCR助手")
-        message.setIcon(QMessageBox.Icon.Question)
+        message.setIcon(QMessageBox.Question)
         message.setText("关闭主窗口后要执行什么操作？")
         message.setInformativeText("缩小到右下角后，仍可使用截图快捷键和托盘菜单。")
         remember = QCheckBox("记住本次选择")
         remember.setChecked(False)
         message.setCheckBox(remember)
         tray_button = message.addButton(
-            "缩小到右下角", QMessageBox.ButtonRole.AcceptRole
+            "缩小到右下角", QMessageBox.AcceptRole
         )
-        quit_button = message.addButton("退出程序", QMessageBox.ButtonRole.DestructiveRole)
-        message.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        quit_button = message.addButton("退出程序", QMessageBox.DestructiveRole)
+        message.addButton("取消", QMessageBox.RejectRole)
         message.setDefaultButton(tray_button)
-        message.exec()
+        exec_dialog(message)
         clicked = message.clickedButton()
         if clicked is tray_button:
             return "tray", remember.isChecked()

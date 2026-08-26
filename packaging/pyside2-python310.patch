@@ -1,0 +1,13 @@
+--- a/sources/shiboken2/libshiboken/pep384impl.cpp
++++ b/sources/shiboken2/libshiboken/pep384impl.cpp
+@@ -751,7 +751,9 @@
+ #endif // IS_PY2
+     Shiboken::AutoDecRef privateobj(PyObject_GetAttr(
+         reinterpret_cast<PyObject *>(Py_TYPE(self)), Shiboken::PyMagicName::name()));
+-#ifndef Py_LIMITED_API
++// Python 3.10 no longer exposes _Py_Mangle as a public C API declaration.
++// Use the existing local implementation instead of linking the private symbol.
++#if !defined(Py_LIMITED_API) && PY_VERSION_HEX < 0x030A0000
+     return _Py_Mangle(privateobj, name);
+ #else
+     // PYSIDE-1436: _Py_Mangle is no longer exposed; implement it always.

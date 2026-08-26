@@ -29,7 +29,11 @@ case "$PLATFORM" in
     ;;
 esac
 
-for edition in ocr full; do
+EDITIONS=(ocr full)
+if [ "$PLATFORM" = "kylin-arm64" ]; then
+  EDITIONS=(full)
+fi
+for edition in "${EDITIONS[@]}"; do
   if [ "$PLATFORM" = "windows" ]; then
     "${COMMAND[@]}" "$edition"
   else
@@ -37,4 +41,4 @@ for edition in ocr full; do
   fi
 done
 
-echo "[done] $PLATFORM 的 OCR版和完整版均已生成。"
+echo "[done] $PLATFORM 构建矩阵已生成：${EDITIONS[*]}。"

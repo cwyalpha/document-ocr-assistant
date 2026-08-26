@@ -6,8 +6,12 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = Path(SPECPATH).resolve().parent
 EDITION = os.environ.get("DOCUMENT_OCR_BUILD_EDITION", "full")
-APP_NAME = "文档OCR助手OCR版" if EDITION == "ocr" else "文档OCR助手完整版"
+APP_NAME = os.environ.get(
+    "DOCUMENT_OCR_APP_NAME",
+    "文档OCR助手OCR版" if EDITION == "ocr" else "文档OCR助手完整版",
+)
 BUILD_INFO = os.environ.get("DOCUMENT_OCR_BUILD_INFO", "")
+QT_BINDING = os.environ.get("DOCUMENT_OCR_QT_BINDING", "PySide6")
 
 
 def without_bundled_models(entries):
@@ -24,6 +28,10 @@ if BUILD_INFO:
     datas += [(BUILD_INFO, ".")]
 hiddenimports = collect_submodules("rapidocr") + collect_submodules("rapid_table")
 excludes = ["paddle", "paddleocr", "torch", "tensorflow"]
+if QT_BINDING == "PySide2":
+    excludes += ["PySide6"]
+else:
+    excludes += ["PySide2", "shiboken2"]
 if EDITION == "ocr":
     excludes += [
         "document_ocr_assistant.libreoffice",

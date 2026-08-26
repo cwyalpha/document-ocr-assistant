@@ -44,8 +44,9 @@ def main() -> int:
     elif args.platform == "kylin-arm64":
         lines += [
             "",
+            "图形界面：双击“启动文档OCR助手.sh”，或先运行“安装快捷方式.sh”。",
             "命令行：./文档OCR助手命令行.sh input.pdf -o ./ocr-output",
-            "本构建仅支持 Kylin V10 ARM64，并且不包含图形界面。",
+            "本构建仅支持 Kylin V10 ARM64，同时包含图形界面和命令行工具。",
         ]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")

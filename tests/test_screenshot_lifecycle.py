@@ -3,11 +3,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QRect
-from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QMainWindow
+from document_ocr_assistant.qt import QApplication, QMainWindow, QRect, QTest, QT_API
 
 from document_ocr_assistant.history import HistoryStore
 from document_ocr_assistant.ui import screenshot_page
@@ -32,6 +32,11 @@ def _wait_until(predicate, timeout_ms: int = 3_000) -> bool:
 def test_second_capture_opens_after_first_capture_is_confirmed(
     monkeypatch, tmp_path: Path
 ) -> None:
+    if QT_API == "PySide2" and os.environ.get("QT_QPA_PLATFORM") in {
+        "offscreen",
+        "minimal",
+    }:
+        pytest.skip("Qt 5 headless plugins cannot capture a virtual desktop")
     app = QApplication.instance() or QApplication([])
     monkeypatch.setattr(
         screenshot_page, "macos_screen_capture_access_granted", lambda: True
@@ -106,9 +111,9 @@ def test_capture_permission_denial_keeps_main_window_visible(
 
 
 def test_black_capture_detection() -> None:
-    from PySide6.QtGui import QColor, QImage
+    from document_ocr_assistant.qt import QColor, QImage
 
-    black = QImage(64, 36, QImage.Format.Format_RGB32)
+    black = QImage(64, 36, QImage.Format_RGB32)
     black.fill(QColor("black"))
     assert screenshot_page.image_is_fully_black(black)
 

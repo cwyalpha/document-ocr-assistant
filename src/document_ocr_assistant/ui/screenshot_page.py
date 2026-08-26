@@ -6,7 +6,7 @@ import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import (
+from ..qt import (
     QByteArray,
     QBuffer,
     QIODevice,
@@ -19,8 +19,6 @@ from PySide6.QtCore import (
     QUrl,
     Signal,
     Slot,
-)
-from PySide6.QtGui import (
     QColor,
     QCursor,
     QDesktopServices,
@@ -31,8 +29,6 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
     QRegion,
-)
-from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QFileDialog,
@@ -46,6 +42,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
     QWidget,
+    exec_dialog,
+    point_from_event,
 )
 
 from ..history import HistoryStore
@@ -98,8 +96,8 @@ def image_is_fully_black(image: QImage) -> bool:
     sample = image.scaled(
         32,
         18,
-        Qt.AspectRatioMode.IgnoreAspectRatio,
-        Qt.TransformationMode.FastTransformation,
+        Qt.IgnoreAspectRatio,
+        Qt.FastTransformation,
     )
     for y in range(sample.height()):
         for x in range(sample.width()):
@@ -423,15 +421,15 @@ class CaptureOverlay(QWidget):
             self.background.toImage()
         ):
             raise RuntimeError("macOS 返回了黑色屏幕画面。")
-        super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        super().__init__(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
         # A capture overlay is single-use. Deleting it on close prevents a
         # hidden first overlay from being destroyed while the second capture
         # is being created, which could otherwise clear the new reference and
         # leave the main window hidden in the system tray.
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setAttribute(Qt.WA_DeleteOnClose)
         self.setMouseTracking(True)
-        self.setCursor(Qt.CursorShape.CrossCursor)
+        self.setCursor(Qt.CrossCursor)
         self.setGeometry(screen.geometry())
         self.selection = QRect()
         self.press_point = QPoint()
@@ -456,8 +454,8 @@ class CaptureOverlay(QWidget):
         self.setFocus()
 
     def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            point = self._bounded_point(event.position().toPoint())
+        if event.button() == Qt.LeftButton:
+            point = self._bounded_point(point_from_event(event))
             self.press_point = point
             self.initial_selection = QRect(self.selection)
             self.drag_action = self._hit_test(point)
@@ -469,7 +467,7 @@ class CaptureOverlay(QWidget):
             self.update()
 
     def mouseMoveEvent(self, event) -> None:
-        point = self._bounded_point(event.position().toPoint())
+        point = self._bounded_point(point_from_event(event))
         if self.drag_action:
             if self.drag_action == "new":
                 self.selection = QRect(self.press_point, point).normalized().intersected(self.rect())
@@ -482,44 +480,44 @@ class CaptureOverlay(QWidget):
             self.setCursor(self._cursor_for_action(self._hit_test(point)))
 
     def mouseReleaseEvent(self, event) -> None:
-        if event.button() != Qt.MouseButton.LeftButton or not self.drag_action:
+        if event.button() != Qt.LeftButton or not self.drag_action:
             return
         self.drag_action = None
         if not self._selection_valid():
             self.selection = QRect()
-            self.setCursor(Qt.CursorShape.CrossCursor)
+            self.setCursor(Qt.CrossCursor)
         else:
             self._position_action_buttons()
-            self.setCursor(self._cursor_for_action(self._hit_test(event.position().toPoint())))
+            self.setCursor(self._cursor_for_action(self._hit_test(point_from_event(event))))
         self.update()
 
     def mouseDoubleClickEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self.selection.contains(
-            event.position().toPoint()
+        if event.button() == Qt.LeftButton and self.selection.contains(
+            point_from_event(event)
         ):
             self.confirm_selection()
             return
         super().mouseDoubleClickEvent(event)
 
     def keyPressEvent(self, event) -> None:
-        if event.key() == Qt.Key.Key_Escape:
+        if event.key() == Qt.Key_Escape:
             self.cancel_capture()
             return
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
             self.confirm_selection()
             return
         if self._selection_valid() and event.key() in (
-            Qt.Key.Key_Left,
-            Qt.Key.Key_Right,
-            Qt.Key.Key_Up,
-            Qt.Key.Key_Down,
+            Qt.Key_Left,
+            Qt.Key_Right,
+            Qt.Key_Up,
+            Qt.Key_Down,
         ):
-            step = 10 if event.modifiers() & Qt.KeyboardModifier.ShiftModifier else 1
-            if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            step = 10 if event.modifiers() & Qt.ShiftModifier else 1
+            if event.modifiers() & Qt.ControlModifier:
                 self._keyboard_resize(event.key(), step)
             else:
-                dx = -step if event.key() == Qt.Key.Key_Left else step if event.key() == Qt.Key.Key_Right else 0
-                dy = -step if event.key() == Qt.Key.Key_Up else step if event.key() == Qt.Key.Key_Down else 0
+                dx = -step if event.key() == Qt.Key_Left else step if event.key() == Qt.Key_Right else 0
+                dy = -step if event.key() == Qt.Key_Up else step if event.key() == Qt.Key_Down else 0
                 self.initial_selection = QRect(self.selection)
                 self.press_point = QPoint(0, 0)
                 self.selection = self._moved_selection(QPoint(dx, dy))
@@ -546,7 +544,7 @@ class CaptureOverlay(QWidget):
             label = f"{self.selection.width()} × {self.selection.height()}"
             label_y = max(4, self.selection.y() - 29)
             painter.fillRect(self.selection.x(), label_y, 112, 25, QColor(20, 27, 39, 220))
-            painter.setPen(Qt.GlobalColor.white)
+            painter.setPen(Qt.white)
             painter.drawText(self.selection.x() + 8, label_y + 18, label)
         else:
             painter.fillRect(self.rect(), QColor(10, 18, 30, 125))
@@ -555,8 +553,8 @@ class CaptureOverlay(QWidget):
             box_width = metrics.horizontalAdvance(message) + 36
             box = QRect(max(12, (self.width() - box_width) // 2), 24, box_width, 42)
             painter.fillRect(box, QColor(20, 27, 39, 225))
-            painter.setPen(Qt.GlobalColor.white)
-            painter.drawText(box, Qt.AlignmentFlag.AlignCenter, message)
+            painter.setPen(Qt.white)
+            painter.drawText(box, Qt.AlignCenter, message)
 
     def _bounded_point(self, point: QPoint) -> QPoint:
         return QPoint(
@@ -586,7 +584,7 @@ class CaptureOverlay(QWidget):
 
     def _draw_handles(self, painter: QPainter) -> None:
         painter.setPen(QPen(QColor("#3478F6"), 1))
-        painter.setBrush(Qt.GlobalColor.white)
+        painter.setBrush(Qt.white)
         radius = self.HANDLE_RADIUS
         for point in self._handle_points().values():
             painter.drawRect(QRect(point.x() - radius, point.y() - radius, radius * 2, radius * 2))
@@ -603,18 +601,18 @@ class CaptureOverlay(QWidget):
         return None
 
     @staticmethod
-    def _cursor_for_action(action: str | None) -> Qt.CursorShape:
+    def _cursor_for_action(action: str | None):
         if action in {"top_left", "bottom_right"}:
-            return Qt.CursorShape.SizeFDiagCursor
+            return Qt.SizeFDiagCursor
         if action in {"top_right", "bottom_left"}:
-            return Qt.CursorShape.SizeBDiagCursor
+            return Qt.SizeBDiagCursor
         if action in {"left", "right"}:
-            return Qt.CursorShape.SizeHorCursor
+            return Qt.SizeHorCursor
         if action in {"top", "bottom"}:
-            return Qt.CursorShape.SizeVerCursor
+            return Qt.SizeVerCursor
         if action == "move":
-            return Qt.CursorShape.SizeAllCursor
-        return Qt.CursorShape.CrossCursor
+            return Qt.SizeAllCursor
+        return Qt.CrossCursor
 
     def _moved_selection(self, point: QPoint) -> QRect:
         delta = point - self.press_point
@@ -646,13 +644,13 @@ class CaptureOverlay(QWidget):
     def _keyboard_resize(self, key: int, step: int) -> None:
         rectangle = QRect(self.selection)
         bounds = self.rect().adjusted(0, 0, -1, -1)
-        if key == Qt.Key.Key_Left:
+        if key == Qt.Key_Left:
             rectangle.setLeft(max(bounds.left(), rectangle.left() - step))
-        elif key == Qt.Key.Key_Right:
+        elif key == Qt.Key_Right:
             rectangle.setRight(min(bounds.right(), rectangle.right() + step))
-        elif key == Qt.Key.Key_Up:
+        elif key == Qt.Key_Up:
             rectangle.setTop(max(bounds.top(), rectangle.top() - step))
-        elif key == Qt.Key.Key_Down:
+        elif key == Qt.Key_Down:
             rectangle.setBottom(min(bounds.bottom(), rectangle.bottom() + step))
         self.selection = rectangle
 
@@ -727,7 +725,7 @@ class ScreenshotOcrWorker(QThread):
         try:
             data = QByteArray()
             buffer = QBuffer(data)
-            buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+            buffer.open(QIODevice.WriteOnly)
             self.image.save(buffer, "PNG")
             buffer.close()
             payload = bytes(data)
@@ -814,16 +812,16 @@ class ScreenshotPage(QWidget):
         card.setObjectName("Card")
         card.setMinimumHeight(310)
         card_layout = QVBoxLayout(card)
-        card_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.setAlignment(Qt.AlignCenter)
         glyph = QLabel("⌗")
-        glyph.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        glyph.setAlignment(Qt.AlignCenter)
         glyph.setStyleSheet("font-size: 72px; color: #3478F6; font-weight: 200;")
         instruction = QLabel("按 Ctrl + Alt + O 或点击按钮冻结屏幕并框选")
-        instruction.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        instruction.setAlignment(Qt.AlignCenter)
         instruction.setStyleSheet("font-size: 18px; font-weight: 600;")
         hint = QLabel("拖动选框或八个控制点调整，Enter 确认，Esc 取消")
         hint.setObjectName("Muted")
-        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hint.setAlignment(Qt.AlignCenter)
         button = QPushButton("开始截图识别")
         button.setProperty("primary", True)
         button.setFixedWidth(180)
@@ -833,7 +831,7 @@ class ScreenshotPage(QWidget):
         card_layout.addWidget(instruction)
         card_layout.addWidget(hint)
         card_layout.addSpacing(14)
-        card_layout.addWidget(button, alignment=Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(button, alignment=Qt.AlignCenter)
         card_layout.addStretch()
         root.addWidget(card)
         self.status = QLabel("准备就绪")
@@ -897,7 +895,7 @@ class ScreenshotPage(QWidget):
         self.status.setText("需要开启 macOS 录屏权限")
         message = QMessageBox(self)
         message.setWindowTitle("需要录屏权限")
-        message.setIcon(QMessageBox.Icon.Information)
+        message.setIcon(QMessageBox.Information)
         message.setText("文档OCR助手尚未获得 macOS 录屏权限。")
         message.setInformativeText(
             "未授权时 macOS 只会返回黑色画面，因此无法截图或识别文字。\n\n"
@@ -905,10 +903,10 @@ class ScreenshotPage(QWidget):
             "然后完全退出并重新打开应用。"
         )
         settings_button = message.addButton(
-            "打开系统设置", QMessageBox.ButtonRole.ActionRole
+            "打开系统设置", QMessageBox.ActionRole
         )
-        message.addButton("稍后", QMessageBox.ButtonRole.RejectRole)
-        message.exec()
+        message.addButton("稍后", QMessageBox.RejectRole)
+        exec_dialog(message)
         if message.clickedButton() is settings_button:
             QDesktopServices.openUrl(
                 QUrl(
@@ -961,7 +959,7 @@ class ScreenshotPage(QWidget):
         self.history_changed.emit()
         self.status.setText("识别完成")
         dialog = ScreenshotResultDialog(text, self)
-        dialog.exec()
+        exec_dialog(dialog)
 
     @Slot(str)
     def show_error(self, message: str) -> None:
@@ -993,15 +991,15 @@ class HistoryPage(QWidget):
         content = QHBoxLayout()
         self.list = QListWidget()
         self.list.setFixedWidth(300)
-        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.list.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.list.setTextElideMode(Qt.ElideRight)
         self.list.setWordWrap(False)
         self.list.setSpacing(3)
         self.list.currentRowChanged.connect(self.show_entry)
         self.preview = QPlainTextEdit()
         self.preview.setReadOnly(True)
-        self.preview.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.preview.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.preview.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.preview.setLineWrapMode(QPlainTextEdit.WidgetWidth)
         content.addWidget(self.list)
         content.addWidget(self.preview, 1)
         root.addLayout(content, 1)
@@ -1028,6 +1026,6 @@ class HistoryPage(QWidget):
 
     @Slot()
     def clear_history(self) -> None:
-        if QMessageBox.question(self, "清空历史", "确定删除全部截图识别历史吗？") == QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, "清空历史", "确定删除全部截图识别历史吗？") == QMessageBox.Yes:
             self.history.clear()
             self.refresh()

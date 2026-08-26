@@ -1,8 +1,6 @@
-# Kylin V10 ARM64 command-line runtime.
-#
-# Qt for Python only publishes Linux ARM64 wheels for glibc 2.39, while Kylin
-# V10 SP1 uses glibc 2.28. The ARM64 release is therefore intentionally a
-# native command-line package and does not install PySide6.
+# Kylin V10 ARM64 OCR runtime. The Docker builder compiles Qt 5.15 and
+# PySide2 separately so the GUI remains compatible with glibc 2.28.
+python-xlib==0.33
 rapidocr==3.9.1
 onnxruntime==1.23.2
 PyMuPDF==1.26.7

@@ -8,9 +8,13 @@ import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication
+from .qt import (
+    QApplication,
+    QIcon,
+    QTimer,
+    configure_high_dpi_rounding,
+    exec_application,
+)
 
 from .edition import build_info
 from .runtime import find_app_icon
@@ -90,7 +94,7 @@ def main() -> int:
         )
         return 0
     os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
-    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    configure_high_dpi_rounding(QApplication)
     application = QApplication(sys.argv)
     application_name = f"文档OCR助手（{build_info().display_suffix}）"
     application.setApplicationName(application_name)
@@ -109,13 +113,21 @@ def main() -> int:
     window.show()
     smoke_screenshot = os.environ.get("DOCUMENT_OCR_UI_SMOKE_SCREENSHOT")
     if smoke_screenshot:
+        smoke_page = os.environ.get("DOCUMENT_OCR_UI_SMOKE_PAGE", "0")
+        try:
+            window.select_page(max(0, min(3, int(smoke_page))))
+        except ValueError:
+            logging.getLogger(__name__).warning(
+                "Invalid UI smoke page: %s", smoke_page
+            )
+
         def finish_smoke_test() -> None:
             saved = window.grab().save(smoke_screenshot)
             logging.getLogger(__name__).info("UI smoke screenshot saved=%s path=%s", saved, smoke_screenshot)
             window.exit_application()
 
         QTimer.singleShot(1000, finish_smoke_test)
-    return application.exec()
+    return exec_application(application)
 
 
 if __name__ == "__main__":

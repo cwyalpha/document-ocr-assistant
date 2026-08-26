@@ -18,7 +18,7 @@ def asset_names(version: str) -> list[str]:
         f"{prefix}-kylin-v10-x86_64-{edition}.run"
         for edition in ("ocr", "full")
     ] + [
-        f"{prefix}-kylin-v10-arm64-cli-{edition}.run"
+        f"{prefix}-kylin-v10-arm64-{edition}.run"
         for edition in ("ocr", "full")
     ]
 
