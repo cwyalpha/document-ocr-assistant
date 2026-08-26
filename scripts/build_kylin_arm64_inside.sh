@@ -125,6 +125,25 @@ if [ ! -s "$TEST_ROOT/gui.png" ]; then
   exit 1
 fi
 
+# PyInstaller's stock Qt5 runtime hook writes an absolute path to qt.conf with
+# Latin-1. Verify our relative-prefix hook using the same kind of Chinese path
+# reported by Kylin desktop users.
+UNICODE_PACKAGE_PARENT="$TEST_ROOT/KOS/桌面"
+mkdir -p "$UNICODE_PACKAGE_PARENT"
+cp -al "$PACKAGE_ROOT" "$UNICODE_PACKAGE_PARENT/"
+UNICODE_MAIN_EXECUTABLE="$UNICODE_PACKAGE_PARENT/$PACKAGE_NAME/app/$APP_NAME/$APP_NAME"
+UNICODE_VERSION_OUTPUT="$("$UNICODE_MAIN_EXECUTABLE" --cli --version)"
+if [[ "$UNICODE_VERSION_OUTPUT" != *"($EDITION, kylin-v10, arm64)"* ]]; then
+  echo "[error] ARM64 冻结程序未通过中文路径版本验证：$UNICODE_VERSION_OUTPUT" >&2
+  exit 1
+fi
+DOCUMENT_OCR_UI_SMOKE_SCREENSHOT="$TEST_ROOT/gui-unicode-path.png" \
+  QT_QPA_PLATFORM=offscreen "$UNICODE_MAIN_EXECUTABLE"
+if [ ! -s "$TEST_ROOT/gui-unicode-path.png" ]; then
+  echo "[error] Kylin ARM64 图形界面未通过中文路径启动测试。" >&2
+  exit 1
+fi
+
 SMOKE_IMAGE="$TEST_ROOT/kylin-arm64-ocr.png"
 SMOKE_DOCX="$TEST_ROOT/kylin-arm64-office.docx"
 "$PYTHON" "$ROOT/scripts/create_kylin_arm64_smoke_input.py" "$SMOKE_IMAGE"

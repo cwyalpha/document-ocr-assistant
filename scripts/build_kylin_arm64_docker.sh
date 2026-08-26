@@ -86,7 +86,7 @@ grep -q "LibreOffice 6.0.6.1" "$OUTPUT/libreoffice-version.txt"
   --no-table
 grep -R -q "Kylin ARM64 LibreOffice bundled conversion test" "$OUTPUT/office-output"
 
-RUN_TEST=/tmp/document-ocr-arm64-run-test
+RUN_TEST=/tmp/KOS/桌面/document-ocr-arm64-run-test
 rm -rf "$RUN_TEST"
 mkdir -p "$RUN_TEST"
 cp "/workspace/dist/$DOCUMENT_OCR_PACKAGE_NAME.run" "$RUN_TEST/"
@@ -106,4 +106,5 @@ fi
 test -s "$RUN_FILE"
 echo "[done] Kylin ARM64 干净容器 GUI、CLI、OCR、Office 测试通过：$TEST_ROOT"
 echo "[done] Kylin ARM64 GUI .run 自解压测试通过。"
+echo "[done] Kylin ARM64 中文路径 GUI、CLI 回归测试通过。"
 echo "[done] 发布包：$RUN_FILE"

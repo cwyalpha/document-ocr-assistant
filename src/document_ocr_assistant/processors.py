@@ -283,7 +283,13 @@ class DocumentProcessors:
                     if needs_ocr
                     else native_text
                 )
-                page_texts.append(text)
+                if options.include_page_numbers:
+                    page_label = f"第 {page_index + 1} 页"
+                    page_texts.append(
+                        f"{page_label}\n\n{text}" if text.strip() else page_label
+                    )
+                else:
+                    page_texts.append(text)
                 raw_page_texts.append(
                     blocks_to_text(raw_oriented_blocks, LayoutMode.RAW.value)
                     if needs_ocr
@@ -296,7 +302,10 @@ class DocumentProcessors:
                     if needs_ocr
                     else native_text
                 )
-                page_markdowns.append(build_markdown(md_text, tables, f"第 {page_index + 1} 页"))
+                page_title = (
+                    f"第 {page_index + 1} 页" if options.include_page_numbers else None
+                )
+                page_markdowns.append(build_markdown(md_text, tables, page_title))
                 if (
                     options.searchable_pdf
                     and needs_ocr

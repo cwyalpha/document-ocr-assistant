@@ -1,6 +1,6 @@
 # Kylin V10 ARM64 图形完整版构建与测试记录
 
-测试日期：2026-08-26（Asia/Shanghai）
+测试日期：2026-08-27（Asia/Shanghai）
 
 ## 环境
 
@@ -21,7 +21,7 @@
 
 | 产物 | 文件大小 | SHA-256 |
 | --- | ---: | --- |
-| `document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run` | 464,081,630 bytes | `ad116fd3eea6d9226339db00b605a7fc6f8ed1c36fe857acc8752e8ff7e2bf44` |
+| `document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run` | 464,090,496 bytes | `9ca12a501296cafbb969b9f24b1e4a8e064e47f15d48731d6029e7f7f79b34b1` |
 
 解压目录约 1.0 GiB。冻结主程序经 `file` 确认为原生 ARM aarch64 ELF，版本信息包含 `(full, kylin-v10, arm64)`。
 
@@ -35,6 +35,8 @@
 - 0°、90°、180°、270° 四个合成页面均识别成功，报告中的实际旋正角度与预期一致。
 - 随包 LibreOffice 输出 `LibreOffice 6.0.6.1 00(Build:1)`，合成 DOCX 转换成功。
 - 最终 `.run` 在全新 Kylin ARM64 基础容器中自解压，`--cli --version` 验证成功。
+- 冻结主程序和最终 `.run` 均从 `KOS/桌面` 中文路径启动；即使外部环境为 `LANG=C`、`LC_ALL=C`，GUI 和 CLI 也不会再触发 PyInstaller PySide2 的 Latin-1 路径编码错误。
+- 新安装与旧设置迁移后默认使用“原始结果”，PDF 的 TXT/Markdown 默认不输出页码；只有勾选高级设置中的“输出页码”才会添加页码标记。
 
 干净容器未安装 Python、OpenCV、Qt 或 LibreOffice。上述 GUI、OCR 和 Office 测试使用的是成品随包运行时，不依赖 builder 镜像。
 

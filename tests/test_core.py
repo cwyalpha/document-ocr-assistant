@@ -151,6 +151,8 @@ def test_settings_roundtrip_and_history_limit(tmp_path: Path) -> None:
     settings_path = tmp_path / "settings.json"
     store = SettingsStore(settings_path)
     assert AppSettings().copy_unconverted_files is False
+    assert AppSettings().layout_mode == "raw"
+    assert AppSettings().include_page_numbers is False
     assert AppSettings().remember_close_choice is False
     settings = AppSettings(
         table_detection=False,
@@ -166,6 +168,24 @@ def test_settings_roundtrip_and_history_limit(tmp_path: Path) -> None:
     assert loaded.remember_close_choice is True
     assert loaded.close_to_tray is False
     assert loaded.theme == "dark"
+
+    legacy_path = tmp_path / "legacy-settings.json"
+    legacy_path.write_text(
+        '{"layout_mode": "natural", "table_detection": false}',
+        encoding="utf-8",
+    )
+    migrated = SettingsStore(legacy_path).load()
+    assert migrated.schema_version == 3
+    assert migrated.layout_mode == "raw"
+    assert migrated.include_page_numbers is False
+    assert migrated.table_detection is False
+
+    custom_legacy_path = tmp_path / "custom-legacy-settings.json"
+    custom_legacy_path.write_text(
+        '{"schema_version": 2, "layout_mode": "single_lines"}',
+        encoding="utf-8",
+    )
+    assert SettingsStore(custom_legacy_path).load().layout_mode == "single_lines"
 
     history = HistoryStore(tmp_path / "history.sqlite3", limit=2)
     history.add("one")

@@ -148,7 +148,8 @@ class ProcessingOptions:
     searchable_pdf: bool = False
     table_detection: bool = True
     copy_unconverted_files: bool = False
-    layout_mode: str = LayoutMode.MULTI_PARAGRAPH.value
+    layout_mode: str = LayoutMode.RAW.value
+    include_page_numbers: bool = False
     ocr_preset: OcrPreset = OcrPreset.BALANCED
     page_orientation: PageOrientation = PageOrientation.AUTO
     orientation_confidence: float = 0.35

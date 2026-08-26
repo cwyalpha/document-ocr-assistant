@@ -2,6 +2,8 @@
 
 本版本新增页面 0°/90°/180°/270° 自动旋正、普通文本行 0°/180° 分类、OCR 流水线预设与高级参数、PDF 页码范围，以及图片/PDF 与文字框联动的审校界面。竖排文字识别和竖排阅读顺序不在本版本范围内。
 
+本次更新将转换排版的默认值改为“原始结果”，并兼容迁移旧版设置。PDF 的 TXT 和 Markdown 默认不再附带页码；如需页码，可在“高级设置”中勾选“输出页码”。Kylin ARM64 版同时修复了从桌面等中文路径启动时 PyInstaller/PySide2 的 Latin-1 编码异常。
+
 软件支持两种 edition：
 
 - OCR 版：只处理图片、PDF、文件夹和包含这些文件的压缩包，不携带任何 Office 转换组件。
@@ -11,10 +13,10 @@
 
 当前资产及 SHA-256：
 
-- `document-ocr-assistant-0.2.0-macos-arm64-full.dmg`：`d4d6335f033d996db33e3608d68e3468f05652e498fe0ceb714db7cadada02f0`
+- `document-ocr-assistant-0.2.0-macos-arm64-full.dmg`：`05ea77277162906b29770cbbd24ac63b23835da0c43822405ee1e716de839a8a`
 - `document-ocr-assistant-0.2.0-windows-x86_64-full.zip`：`14cfcbddfd0de36ae40d96544946530c206d91960cd081a13b7a74f12c30ec4e`
 - `document-ocr-assistant-0.2.0-kylin-v10-x86_64-full.run`：`57179ac44ca7595a9d6826c5262a920a0a522830689e1ec09eb1f9a918f80ae8`
-- `document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run`：`ad116fd3eea6d9226339db00b605a7fc6f8ed1c36fe857acc8752e8ff7e2bf44`
+- `document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run`：`9ca12a501296cafbb969b9f24b1e4a8e064e47f15d48731d6029e7f7f79b34b1`
 
 ## macOS 安装
 

@@ -12,6 +12,11 @@ APP_NAME = os.environ.get(
 )
 BUILD_INFO = os.environ.get("DOCUMENT_OCR_BUILD_INFO", "")
 QT_BINDING = os.environ.get("DOCUMENT_OCR_QT_BINDING", "PySide6")
+RUNTIME_HOOKS = []
+if QT_BINDING == "PySide2":
+    RUNTIME_HOOKS.append(
+        str(ROOT / "packaging" / "runtime_hooks" / "pyi_rth_pyside2_unicode_path.py")
+    )
 
 
 def without_bundled_models(entries):
@@ -47,7 +52,7 @@ analysis = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=RUNTIME_HOOKS,
     excludes=excludes,
     noarchive=False,
     optimize=1,

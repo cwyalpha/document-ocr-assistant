@@ -605,6 +605,11 @@ class BatchPage(QWidget):
         self.cpu_threads.setRange(0, 128)
         self.cpu_threads.setSpecialValueText("自动")
         self.cpu_threads.setValue(self.settings.cpu_threads)
+        self.include_page_numbers = QCheckBox("输出页码")
+        self.include_page_numbers.setChecked(self.settings.include_page_numbers)
+        self.include_page_numbers.setToolTip(
+            "默认不输出。勾选后，在 PDF 的 TXT 和 Markdown 结果中标注原始页码。"
+        )
         for label, widget in (
             ("PDF DPI", self.pdf_dpi),
             ("图像长边", self.max_side_len),
@@ -623,6 +628,7 @@ class BatchPage(QWidget):
             group.addWidget(widget)
             advanced_row.addLayout(group)
         advanced_layout.addLayout(advanced_row)
+        advanced_layout.addWidget(self.include_page_numbers)
         self.advanced_frame.setVisible(False)
         self.advanced_button.toggled.connect(self.advanced_frame.setVisible)
         for widget in (
@@ -731,6 +737,7 @@ class BatchPage(QWidget):
         self.settings.page_orientation = str(self.page_orientation.currentData())
         self.settings.textline_orientation = self.textline_orientation.isChecked()
         self.settings.layout_mode = str(self.layout_mode.currentData())
+        self.settings.include_page_numbers = self.include_page_numbers.isChecked()
         self.settings.page_range = self.page_range.text().strip()
         self.settings.pdf_dpi = self.pdf_dpi.value()
         self.settings.max_side_len = self.max_side_len.value()

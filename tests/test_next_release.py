@@ -15,6 +15,7 @@ from document_ocr_assistant.models import (
     OcrPreset,
     PageOrientation,
     PdfMode,
+    LayoutMode,
     ProcessingOptions,
     ProductEdition,
 )
@@ -47,6 +48,8 @@ class FixedOcr:
 
 
 def test_page_range_and_presets() -> None:
+    assert ProcessingOptions().layout_mode == LayoutMode.RAW.value
+    assert ProcessingOptions().include_page_numbers is False
     assert parse_page_range("1-3, 5，3", 6) == [0, 1, 2, 4]
     assert ProcessingOptions(ocr_preset=OcrPreset.FAST).resolved_ocr_values() == {
         "pdf_dpi": 150,
@@ -90,6 +93,7 @@ def test_settings_persist_pipeline_controls(tmp_path: Path) -> None:
         text_score=0.66,
         rec_batch_size=12,
         cpu_threads=4,
+        include_page_numbers=True,
     )
     store.save(settings)
     loaded = store.load()
@@ -100,6 +104,7 @@ def test_settings_persist_pipeline_controls(tmp_path: Path) -> None:
     assert options.resolved_ocr_values() == {"pdf_dpi": 360, "max_side_len": 5000}
     assert options.det_box_thresh == 0.62
     assert options.cpu_threads == 4
+    assert options.include_page_numbers is True
 
 
 def test_ocr_edition_rejects_word_and_version_reports_edition(monkeypatch) -> None:
@@ -140,3 +145,17 @@ def test_scanned_pdf_gets_searchable_text_layer(tmp_path: Path) -> None:
     with fitz.open(stream=result.searchable_pdf_bytes, filetype="pdf") as searchable:
         assert "OCR SEARCHABLE" in searchable[0].get_text()
     assert result.metadata["processed_pages"] == [1]
+    assert not result.text.startswith("第 1 页")
+    assert not result.markdown.startswith("# 第 1 页")
+
+    numbered = processors.process(
+        InputItem(source, InputKind.PDF),
+        ProcessingOptions(
+            pdf_mode=PdfMode.FORCE_OCR,
+            table_detection=False,
+            page_orientation=PageOrientation.OFF,
+            include_page_numbers=True,
+        ),
+    )
+    assert numbered.text.startswith("第 1 页\n\n")
+    assert numbered.markdown.startswith("# 第 1 页\n\n")

@@ -49,11 +49,14 @@ def test_review_tabs_preview_pagination_and_settings_persistence(tmp_path: Path)
     page.ocr_preset.setCurrentIndex(page.ocr_preset.findData("custom"))
     page.page_orientation.setCurrentIndex(page.page_orientation.findData("270"))
     page.page_range.setText("1")
+    page.include_page_numbers.setChecked(True)
     page.text_score.setValue(0.61)
     options = page._options()
     assert options.page_orientation.value == "270"
     assert options.page_range == "1"
+    assert options.include_page_numbers is True
     assert options.text_score == 0.61
     assert SettingsStore(settings_path).load().text_score == 0.61
+    assert SettingsStore(settings_path).load().include_page_numbers is True
     page.close()
     app.processEvents()

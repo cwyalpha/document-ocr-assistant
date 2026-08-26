@@ -64,7 +64,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--layout-mode",
         choices=[value.value for value in LayoutMode],
-        default=LayoutMode.MULTI_PARAGRAPH.value,
+        default=LayoutMode.RAW.value,
+    )
+    parser.add_argument(
+        "--include-page-numbers",
+        action="store_true",
+        help="在 PDF 的 TXT 和 Markdown 输出中标注原始页码",
     )
     parser.add_argument("--page-range", default="", help="PDF 页码，例如 1-3,5")
     parser.add_argument("--pdf-dpi", type=int, default=200)
@@ -108,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         table_detection=not args.no_table,
         copy_unconverted_files=args.copy_unconverted,
         layout_mode=args.layout_mode,
+        include_page_numbers=args.include_page_numbers,
         ocr_preset=OcrPreset(args.ocr_preset),
         page_orientation=PageOrientation(args.page_orientation),
         orientation_confidence=args.orientation_confidence,
