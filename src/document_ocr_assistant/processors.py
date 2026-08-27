@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -21,13 +22,35 @@ from .models import (
     TableResult,
 )
 from .ocr_engine import OcrEngine
-from .orientation import OrientationEngine, blocks_to_original
+from .orientation import OrientationEngine, OrientationResult, blocks_to_original
+from .page_numbers import (
+    PageNumberMatch,
+    PositionedTextLine,
+    find_page_number_matches,
+    native_pdf_text_lines,
+    ocr_blocks_to_positioned_lines,
+)
 from .table_engine import TableEngine
 from .text_format import blocks_to_text, build_markdown, html_document_without_tables_to_text
 
 
 LOGGER = logging.getLogger(__name__)
 ProgressCallback = Callable[[int, str], None]
+
+
+@dataclass(slots=True)
+class _PdfPageState:
+    page_index: int
+    native_text: str
+    native_lines: list[PositionedTextLine]
+    needs_ocr: bool
+    raw_blocks: list[OcrBlock]
+    accepted_blocks: list[OcrBlock]
+    tables: list[TableResult]
+    oriented: OrientationResult | None
+    image_width: int
+    image_height: int
+    metadata: dict[str, object]
 
 
 def load_image_bgr(source: str | Path | bytes) -> np.ndarray:
@@ -221,6 +244,7 @@ class DocumentProcessors:
         warnings: list[str] = []
         pages_metadata: list[dict[str, object]] = []
         raw_page_texts: list[str] = []
+        page_states: list[_PdfPageState] = []
         try:
             total_pages = max(1, document.page_count)
             selected_pages = set(parse_page_range(options.page_range, document.page_count))
@@ -238,14 +262,17 @@ class DocumentProcessors:
                 needs_ocr = options.pdf_mode is PdfMode.FORCE_OCR or (
                     options.pdf_mode is PdfMode.AUTO and not has_native_text
                 )
+                native_lines = (
+                    native_pdf_text_lines(page, page_index)
+                    if options.remove_pdf_page_numbers and not needs_ocr
+                    else []
+                )
                 needs_image = needs_ocr or options.table_detection
                 image: np.ndarray | None = (
                     _render_pdf_page(page, dpi=pdf_dpi) if needs_image else None
                 )
                 raw_oriented_blocks: list[OcrBlock] = []
                 accepted_oriented_blocks: list[OcrBlock] = []
-                restored_blocks: list[OcrBlock] = []
-                restored_accepted_blocks: list[OcrBlock] = []
                 oriented = None
                 if image is not None and (needs_ocr or options.table_detection):
                     oriented = self.orientation.orient(
@@ -263,11 +290,6 @@ class DocumentProcessors:
                         for block in raw_oriented_blocks
                         if block.score >= options.text_score
                     ]
-                    restored_blocks = blocks_to_original(raw_oriented_blocks, oriented)
-                    restored_accepted_blocks = blocks_to_original(
-                        accepted_oriented_blocks, oriented
-                    )
-                    all_blocks.extend(restored_blocks)
                 tables: list[TableResult] = []
                 if options.table_detection and image is not None:
                     if self.tables.available:
@@ -275,65 +297,147 @@ class DocumentProcessors:
                         tables = self.tables.analyze(
                             oriented.image, accepted_oriented_blocks, page_index
                         )
-                        all_tables.extend(tables)
                     elif page_index == 0:
                         warnings.append("表格模型不可用，已跳过 PDF 表格结构识别。")
-                text = (
-                    blocks_to_text(accepted_oriented_blocks, options.layout_mode)
-                    if needs_ocr
-                    else native_text
+                page_metadata: dict[str, object] = {
+                    "page_index": page_index,
+                    "width": image.shape[1] if image is not None else 0,
+                    "height": image.shape[0] if image is not None else 0,
+                    "native_text": not needs_ocr,
+                    "detected_angle": oriented.detected_angle if oriented else 0,
+                    "applied_angle": oriented.applied_angle if oriented else 0,
+                    "orientation_confidence": oriented.confidence if oriented else 1.0,
+                    "low_confidence_blocks": sum(
+                        block.score < options.text_score for block in raw_oriented_blocks
+                    ),
+                }
+                pages_metadata.append(page_metadata)
+                page_states.append(
+                    _PdfPageState(
+                        page_index,
+                        native_text,
+                        native_lines,
+                        needs_ocr,
+                        raw_oriented_blocks,
+                        accepted_oriented_blocks,
+                        tables,
+                        oriented,
+                        oriented.image.shape[1] if oriented is not None else 0,
+                        oriented.image.shape[0] if oriented is not None else 0,
+                        page_metadata,
+                    )
                 )
+                percent = int(((page_index + 1) / total_pages) * 95)
+                progress(percent, f"正在处理第 {page_index + 1}/{total_pages} 页")
+
+            detection_lines: list[PositionedTextLine] = []
+            native_line_objects: set[int] = set()
+            ocr_line_objects: set[int] = set()
+            if options.remove_pdf_page_numbers:
+                for state in page_states:
+                    detection_lines.extend(state.native_lines)
+                    native_line_objects.update(id(line) for line in state.native_lines)
+                    if state.raw_blocks and state.oriented is not None:
+                        ocr_lines = ocr_blocks_to_positioned_lines(
+                            state.raw_blocks,
+                            state.page_index,
+                            state.image_width,
+                            state.image_height,
+                        )
+                        detection_lines.extend(ocr_lines)
+                        ocr_line_objects.update(id(line) for line in ocr_lines)
+            matches = find_page_number_matches(detection_lines, document.page_count)
+            matches_by_page: dict[int, list[PageNumberMatch]] = {}
+            for match in matches:
+                matches_by_page.setdefault(match.line.page_index, []).append(match)
+
+            for state in page_states:
+                page_matches = matches_by_page.get(state.page_index, [])
+                removed_native_lines = {
+                    id(match.line)
+                    for match in page_matches
+                    if id(match.line) in native_line_objects
+                }
+                removed_ocr_ids = {
+                    source_id
+                    for match in page_matches
+                    if id(match.line) in ocr_line_objects
+                    for source_id in match.line.source_ids
+                }
+                raw_blocks = [
+                    block for block in state.raw_blocks if id(block) not in removed_ocr_ids
+                ]
+                accepted_blocks = [
+                    block for block in state.accepted_blocks if id(block) not in removed_ocr_ids
+                ]
+                native_text = state.native_text
+                if removed_native_lines:
+                    native_text = "\n".join(
+                        line.text
+                        for line in state.native_lines
+                        if id(line) not in removed_native_lines
+                    ).strip()
+
+                if state.needs_ocr:
+                    text = blocks_to_text(accepted_blocks, options.layout_mode)
+                    raw_text = blocks_to_text(raw_blocks, LayoutMode.RAW.value)
+                    md_text = _non_table_text(
+                        accepted_blocks, state.tables, options.layout_mode
+                    )
+                else:
+                    text = native_text
+                    raw_text = native_text
+                    md_text = native_text
+
                 if options.include_page_numbers:
-                    page_label = f"第 {page_index + 1} 页"
+                    page_label = f"第 {state.page_index + 1} 页"
                     page_texts.append(
                         f"{page_label}\n\n{text}" if text.strip() else page_label
                     )
                 else:
                     page_texts.append(text)
-                raw_page_texts.append(
-                    blocks_to_text(raw_oriented_blocks, LayoutMode.RAW.value)
-                    if needs_ocr
-                    else native_text
-                )
-                md_text = (
-                    _non_table_text(
-                        accepted_oriented_blocks, tables, options.layout_mode
-                    )
-                    if needs_ocr
-                    else native_text
-                )
+                raw_page_texts.append(raw_text)
                 page_title = (
-                    f"第 {page_index + 1} 页" if options.include_page_numbers else None
+                    f"第 {state.page_index + 1} 页"
+                    if options.include_page_numbers
+                    else None
                 )
-                page_markdowns.append(build_markdown(md_text, tables, page_title))
-                if (
-                    options.searchable_pdf
-                    and needs_ocr
-                    and restored_accepted_blocks
-                    and image is not None
-                ):
-                    self._insert_searchable_text(
-                        page,
-                        restored_accepted_blocks,
-                        image.shape[1],
-                        image.shape[0],
+                page_markdowns.append(
+                    build_markdown(md_text, state.tables, page_title)
+                )
+                all_tables.extend(state.tables)
+
+                if state.oriented is not None:
+                    restored_blocks = blocks_to_original(raw_blocks, state.oriented)
+                    restored_accepted_blocks = blocks_to_original(
+                        accepted_blocks, state.oriented
                     )
-                pages_metadata.append(
+                    all_blocks.extend(restored_blocks)
+                    if (
+                        options.searchable_pdf
+                        and state.needs_ocr
+                        and restored_accepted_blocks
+                        and state.image_width
+                        and state.image_height
+                    ):
+                        self._insert_searchable_text(
+                            document[state.page_index],
+                            restored_accepted_blocks,
+                            state.image_width,
+                            state.image_height,
+                        )
+
+                removed_texts = list(
                     {
-                        "page_index": page_index,
-                        "width": image.shape[1] if image is not None else 0,
-                        "height": image.shape[0] if image is not None else 0,
-                        "native_text": not needs_ocr,
-                        "detected_angle": oriented.detected_angle if oriented else 0,
-                        "applied_angle": oriented.applied_angle if oriented else 0,
-                        "orientation_confidence": oriented.confidence if oriented else 1.0,
-                        "low_confidence_blocks": sum(
-                            block.score < options.text_score for block in raw_oriented_blocks
-                        ),
-                    }
+                        (match.region, match.parsed.value): match.line.text.strip()
+                        for match in page_matches
+                    }.values()
                 )
-                percent = int(((page_index + 1) / total_pages) * 95)
-                progress(percent, f"正在处理第 {page_index + 1}/{total_pages} 页")
+                state.metadata["removed_page_number_count"] = len(removed_texts)
+                state.metadata["removed_page_numbers"] = removed_texts
+                state.metadata["low_confidence_blocks"] = sum(
+                    block.score < options.text_score for block in raw_blocks
+                )
             searchable_bytes = None
             if options.searchable_pdf:
                 searchable_bytes = document.tobytes(garbage=3, deflate=True)

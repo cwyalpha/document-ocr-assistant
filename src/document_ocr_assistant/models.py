@@ -150,6 +150,7 @@ class ProcessingOptions:
     copy_unconverted_files: bool = False
     layout_mode: str = LayoutMode.RAW.value
     include_page_numbers: bool = False
+    remove_pdf_page_numbers: bool = False
     ocr_preset: OcrPreset = OcrPreset.BALANCED
     page_orientation: PageOrientation = PageOrientation.AUTO
     orientation_confidence: float = 0.35

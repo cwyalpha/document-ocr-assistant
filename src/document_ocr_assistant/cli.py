@@ -71,6 +71,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="在 PDF 的 TXT 和 Markdown 输出中标注原始页码",
     )
+    parser.add_argument(
+        "--remove-pdf-page-numbers",
+        action="store_true",
+        help="从 PDF 的识别文字结果中自动移除原有页码",
+    )
     parser.add_argument("--page-range", default="", help="PDF 页码，例如 1-3,5")
     parser.add_argument("--pdf-dpi", type=int, default=200)
     parser.add_argument("--max-side-len", type=int, default=2000)
@@ -114,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
         copy_unconverted_files=args.copy_unconverted,
         layout_mode=args.layout_mode,
         include_page_numbers=args.include_page_numbers,
+        remove_pdf_page_numbers=args.remove_pdf_page_numbers,
         ocr_preset=OcrPreset(args.ocr_preset),
         page_orientation=PageOrientation(args.page_orientation),
         orientation_confidence=args.orientation_confidence,

@@ -50,6 +50,7 @@ class FixedOcr:
 def test_page_range_and_presets() -> None:
     assert ProcessingOptions().layout_mode == LayoutMode.RAW.value
     assert ProcessingOptions().include_page_numbers is False
+    assert ProcessingOptions().remove_pdf_page_numbers is False
     assert parse_page_range("1-3, 5，3", 6) == [0, 1, 2, 4]
     assert ProcessingOptions(ocr_preset=OcrPreset.FAST).resolved_ocr_values() == {
         "pdf_dpi": 150,
@@ -94,6 +95,7 @@ def test_settings_persist_pipeline_controls(tmp_path: Path) -> None:
         rec_batch_size=12,
         cpu_threads=4,
         include_page_numbers=True,
+        remove_pdf_page_numbers=True,
     )
     store.save(settings)
     loaded = store.load()
@@ -105,6 +107,7 @@ def test_settings_persist_pipeline_controls(tmp_path: Path) -> None:
     assert options.det_box_thresh == 0.62
     assert options.cpu_threads == 4
     assert options.include_page_numbers is True
+    assert options.remove_pdf_page_numbers is True
 
 
 def test_ocr_edition_rejects_word_and_version_reports_edition(monkeypatch) -> None:

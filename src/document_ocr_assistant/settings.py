@@ -39,7 +39,7 @@ def data_directory() -> Path:
 
 @dataclass(slots=True)
 class AppSettings:
-    schema_version: int = 3
+    schema_version: int = 4
     output_mode: str = OutputMode.NEW_BATCH_DIRECTORY.value
     output_parent: str = str(Path.home() / "Documents" / "文档OCR输出")
     pdf_mode: str = PdfMode.AUTO.value
@@ -48,6 +48,7 @@ class AppSettings:
     copy_unconverted_files: bool = False
     layout_mode: str = LayoutMode.RAW.value
     include_page_numbers: bool = False
+    remove_pdf_page_numbers: bool = False
     ocr_preset: str = OcrPreset.BALANCED.value
     page_orientation: str = PageOrientation.AUTO.value
     orientation_confidence: float = 0.35
@@ -79,6 +80,7 @@ class AppSettings:
             copy_unconverted_files=self.copy_unconverted_files,
             layout_mode=self.layout_mode,
             include_page_numbers=self.include_page_numbers,
+            remove_pdf_page_numbers=self.remove_pdf_page_numbers,
             ocr_preset=OcrPreset(self.ocr_preset),
             page_orientation=PageOrientation(self.page_orientation),
             orientation_confidence=self.orientation_confidence,
@@ -126,6 +128,9 @@ class SettingsStore:
             payload["schema_version"] = 3
         elif payload.get("layout_mode") == "natural":
             payload["layout_mode"] = LayoutMode.MULTI_PARAGRAPH.value
+        if schema_version < 4:
+            payload["remove_pdf_page_numbers"] = False
+            payload["schema_version"] = 4
         defaults = asdict(AppSettings())
         values: dict[str, Any] = {key: payload.get(key, value) for key, value in defaults.items()}
         try:

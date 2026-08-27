@@ -153,6 +153,7 @@ def test_settings_roundtrip_and_history_limit(tmp_path: Path) -> None:
     assert AppSettings().copy_unconverted_files is False
     assert AppSettings().layout_mode == "raw"
     assert AppSettings().include_page_numbers is False
+    assert AppSettings().remove_pdf_page_numbers is False
     assert AppSettings().remember_close_choice is False
     settings = AppSettings(
         table_detection=False,
@@ -175,9 +176,10 @@ def test_settings_roundtrip_and_history_limit(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     migrated = SettingsStore(legacy_path).load()
-    assert migrated.schema_version == 3
+    assert migrated.schema_version == 4
     assert migrated.layout_mode == "raw"
     assert migrated.include_page_numbers is False
+    assert migrated.remove_pdf_page_numbers is False
     assert migrated.table_detection is False
 
     custom_legacy_path = tmp_path / "custom-legacy-settings.json"
