@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 def font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     candidates = (
         "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/usr/share/fonts/cantarell/Cantarell-Regular.otf",
         "/usr/share/fonts/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
@@ -35,6 +36,31 @@ def base_page() -> Image.Image:
     draw.text((110, 230), "PP-OCRv6 generated release test", fill="black", font=body)
     draw.text((110, 300), "离线识别测试 2026", fill="black", font=body)
     draw.text((110, 370), "Searchable PDF / Page orientation", fill="black", font=body)
+    return image
+
+
+def orientation_page() -> Image.Image:
+    """Create a text-dense page that gives the four-way model a stable crop."""
+    image = Image.new("RGB", (1200, 800), "white")
+    draw = ImageDraw.Draw(image)
+    title = font(46)
+    body = font(34)
+    draw.text((90, 55), "Document OCR Assistant", fill="black", font=title)
+    lines = [
+        "PP-OCRv6 offline release validation document",
+        "Horizontal text verifies automatic page orientation",
+        "Searchable PDF output keeps the detected text layer",
+        "Table recognition uses the bundled ONNX structure model",
+        "LibreOffice converts Word and WPS documents offline",
+        "Archive input supports ZIP RAR 7Z TAR and TAR.GZ files",
+        "The desktop client processes local files without a web server",
+        "Generated test material contains no private user information",
+        "Document OCR Assistant release gate line nine",
+        "Document OCR Assistant release gate line ten",
+        "Document OCR Assistant release gate line eleven",
+    ]
+    for index, line in enumerate(lines):
+        draw.text((90, 145 + index * 55), line, fill="black", font=body)
     return image
 
 
@@ -88,7 +114,7 @@ def main() -> int:
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    upright = base_page()
+    upright = orientation_page()
     upright_path = output / "orientation-0.png"
     upright.save(upright_path)
     for angle in (90, 180, 270):

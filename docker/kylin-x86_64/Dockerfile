@@ -44,4 +44,10 @@ RUN python3.12 -m pip install --upgrade pip setuptools wheel \
       "pyinstaller-hooks-contrib==2026.0" \
       "pytest>=7.4,<9"
 
+# LibreOffice's vendor x86_64 build links against Mozilla NSS.  Bundle these
+# Kylin-native libraries into the portable LibreOffice tree during packaging.
+RUN dnf -y install nspr nss \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
 WORKDIR /workspace

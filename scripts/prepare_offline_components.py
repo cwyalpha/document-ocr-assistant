@@ -34,6 +34,23 @@ LIBREOFFICE_HASHES = {
     f"LibreOffice_{LIBREOFFICE_VERSION}_Linux_x86-64_deb_langpack_zh-CN.tar.gz":
         "80f8707ae9e7e72ed6a397724d876999233ec9d7a85f8c3fbb018621db95eb15",
 }
+LIBREOFFICE_NSS_REQUIRED = (
+    "libnspr4.so",
+    "libnss3.so",
+    "libnssutil3.so",
+    "libplc4.so",
+    "libplds4.so",
+    "libsmime3.so",
+    "libssl3.so",
+)
+LIBREOFFICE_NSS_OPTIONAL = (
+    "libfreebl3.so",
+    "libfreeblpriv3.so",
+    "libnssckbi.so",
+    "libnssdbm3.so",
+    "libnsssysinit.so",
+    "libsoftokn3.so",
+)
 
 
 def _sha256(path: Path) -> str:
@@ -171,6 +188,25 @@ def install_libreoffice(components: Path, output_root: Path) -> Path:
             executable.chmod(
                 executable.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
             )
+    library_sources = (Path("/usr/lib64"), Path("/lib64"))
+    missing: list[str] = []
+    copied: set[str] = set()
+    for name in (*LIBREOFFICE_NSS_REQUIRED, *LIBREOFFICE_NSS_OPTIONAL):
+        source = next(
+            (directory / name for directory in library_sources if (directory / name).is_file()),
+            None,
+        )
+        if source is None:
+            if name in LIBREOFFICE_NSS_REQUIRED:
+                missing.append(name)
+            continue
+        shutil.copy2(source.resolve(), destination / "program" / name)
+        copied.add(name)
+    if missing:
+        raise RuntimeError(
+            "Kylin NSS runtime is incomplete; missing: " + ", ".join(sorted(missing))
+        )
+    print(f"[offline] Kylin NSS runtime -> {len(copied)} libraries")
     soffice = destination / "program" / "soffice"
     if not soffice.is_file():
         raise RuntimeError("Bundled soffice executable is missing")
@@ -239,7 +275,7 @@ def install_archive_tools(components: Path, output_root: Path) -> list[Path]:
     return installed
 
 
-def verify_libreoffice(soffice: Path) -> None:
+def verify_libreoffice(soffice: Path, output_root: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="document_ocr_lo_verify_") as temporary:
         root = Path(temporary)
         home = root / "home"
@@ -256,6 +292,15 @@ def verify_libreoffice(soffice: Path) -> None:
         environment.setdefault("SAL_USE_VCLPLUGIN", "svp")
         environment["HOME"] = str(home)
         environment["XDG_CONFIG_HOME"] = str(home / ".config")
+        # Mirror the frozen application's runtime library path when checking
+        # the bundled child process before the final package is assembled.
+        internal_library_dirs = sorted((output_root / "app").glob("*/_internal"))
+        if internal_library_dirs:
+            library_path = os.pathsep.join(str(path) for path in internal_library_dirs)
+            existing_library_path = environment.get("LD_LIBRARY_PATH")
+            if existing_library_path:
+                library_path = os.pathsep.join((library_path, existing_library_path))
+            environment["LD_LIBRARY_PATH"] = library_path
         completed = subprocess.run(
             [
                 str(soffice),
@@ -314,7 +359,7 @@ def main() -> int:
     if not args.skip_archive_tools:
         install_archive_tools(components, output_root)
     if soffice and not args.no_verify:
-        verify_libreoffice(soffice)
+        verify_libreoffice(soffice, output_root)
     print("[offline] components are ready")
     return 0
 
