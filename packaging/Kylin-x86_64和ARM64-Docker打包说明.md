@@ -4,10 +4,10 @@
 
 ## 产物区别
 
-| 目标 | Docker 平台 | 产物 | 界面 | Office 组件 |
+| 目标 | Docker 平台 | 当前产物 | 界面 | Office 组件 |
 | --- | --- | --- | --- | --- |
-| Kylin V10 x86_64 | `linux/amd64` | `document-ocr-assistant-0.2.0-kylin-v10-x86_64-full.tar.gz` | 根目录原生程序、PySide6 图形界面和 CLI | 离线组件目录中的 LibreOffice 7.6 x86_64 |
-| Kylin V10 ARM64 | `linux/arm64` | `document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run` | Qt 5.15 / PySide2 图形界面和 CLI | Kylin ARM64 仓库中的 LibreOffice 6.0.6.1 |
+| Kylin V10 x86_64 | `linux/amd64` | `document-ocr-assistant-0.2.0-kylin-v10-x86_64-full.tar.gz` 绿色目录版 | 根目录原生程序、PySide6 图形界面和 CLI | 离线组件目录中的 LibreOffice 7.6 x86_64 |
+| Kylin V10 ARM64 | `linux/arm64` | 当前脚本仍为 `.run`；下一次应按本文迁移为同结构 `.tar.gz` | Qt 5.15 / PySide2 图形界面和 CLI | Kylin ARM64 仓库中的 LibreOffice 6.0.6.1 |
 
 ARM64 使用在 Kylin V10 容器内源码构建的 Qt 5.15.2 与 PySide2 5.15.2.1，以保持 glibc 2.28 兼容；程序同时提供图形界面和命令行入口。
 
@@ -31,6 +31,120 @@ docker run --rm --platform linux/arm64 macrosan/kylin:v10-sp1 uname -m
 ```
 
 如果输出与预期不符，不要继续打包。Apple Silicon Mac 构建 x86_64 时会使用 Docker 的 amd64 模拟，速度明显慢于 ARM64 原生构建。
+
+## 绿色目录版固定结构
+
+x86_64 已采用以下结构。ARM64 后续也应保持相同结构，只允许 CPU 架构、Qt 版本和 LibreOffice 来源不同：
+
+```text
+document-ocr-assistant-0.2.0-kylin-v10-<arch>-full/
+├── 文档OCR助手完整版          # 根目录原生 ELF 主程序，同时提供 GUI 和 --cli
+├── _internal/                 # PyInstaller 运行库，build-info.json 也在这里
+├── models/
+│   ├── ppocrv6-medium/        # PP-OCRv6 Medium ONNX
+│   ├── table/                 # SLANet-plus ONNX
+│   └── orientation/           # 页面方向 ONNX
+├── bin/
+│   ├── libreoffice/           # full 版离线 Office 转换组件
+│   ├── unrar/                 # 解压工具；实际子结构按架构构建脚本为准
+│   └── ...
+├── assets/
+│   └── app-icon.svg
+├── 安装快捷方式.sh
+└── 使用说明.txt
+```
+
+固定规则：
+
+1. 主程序直接位于压缩包总目录根部，不能再放入 `app/<程序名>/`。
+2. 不再依赖 `启动文档OCR助手.sh`、`文档OCR助手命令行.sh` 或自解压头；GUI 和 CLI 都直接调用根目录主程序。
+3. `_internal`、`models`、`bin`、`assets` 必须与主程序一起移动，主程序不能脱离附件目录单独复制。
+4. `build-info.json` 使用 PyInstaller onedir 的 `_internal/build-info.json`，不要在根目录再放一份重复文件。
+5. 发布物使用保留一个总目录的 `.tar.gz`；不要在 macOS 主机上重新打包 Linux 目录，也不要用 `.zip` 代替，否则容易丢失 ELF 和 Shell 脚本的执行权限。
+6. `ocr` 版不得包含 LibreOffice；`full` 版必须实际执行一次 DOCX 转换，不能只检查 `soffice` 文件存在。
+
+PyInstaller onedir 输出必须整体平铺到发布目录根部。关键命令为：
+
+```bash
+PACKAGE_ROOT="$ROOT/dist/$PACKAGE_NAME"
+mkdir -p "$PACKAGE_ROOT"
+cp -a "$PYI_DIST/$APP_NAME/." "$PACKAGE_ROOT/"
+rm -rf "$PYI_DIST/$APP_NAME"
+chmod +x "$PACKAGE_ROOT/$APP_NAME" "$PACKAGE_ROOT/安装快捷方式.sh"
+```
+
+必须使用 `cp -a source/. destination/`。末尾的 `/.` 会复制目录内容及隐藏文件，同时保留 Linux 权限；不要把整个 PyInstaller 输出目录复制成新的嵌套层级。
+
+ARM64 原脚本把 Qt 图形运行库复制到 `app/$APP_NAME/_internal`。改为绿色结构后，相同文件必须复制到：
+
+```bash
+cp -L "$source_library" "$PACKAGE_ROOT/_internal/$qt_runtime_library"
+```
+
+## UTF-8、中文目录和空格处理
+
+构建、归档和验收都在 Kylin Linux 容器内完成。Docker 启动构建命令时建议明确设置：
+
+```bash
+docker run --rm \
+  --platform linux/amd64 \
+  -e LANG=C.UTF-8 \
+  -e LC_ALL=C.UTF-8 \
+  -e PYTHONUTF8=1 \
+  -e PYTHONIOENCODING=UTF-8 \
+  ...
+```
+
+ARM64 将 `linux/amd64` 改为 `linux/arm64`。先在容器内运行 `locale -a` 确认 `C.UTF-8` 可用；如果镜像只提供 `zh_CN.UTF-8`，则统一改用该 locale。不要只在 macOS 主机设置 locale，因为真正执行 PyInstaller 和 tar 的是容器。
+
+所有 Shell 路径变量都必须使用双引号，包括 `ROOT`、`PACKAGE_ROOT`、主程序、模型路径、输出目录和 Docker 挂载源。不要使用 `for file in $(find ...)` 处理文件名，也不要依赖按空格分词。
+
+创建压缩包及检查中文文件名时使用 GNU tar：
+
+```bash
+ARCHIVE_FILE="$ROOT/dist/$PACKAGE_NAME.tar.gz"
+tar -czf "$ARCHIVE_FILE" -C "$ROOT/dist" "$PACKAGE_NAME"
+
+# Kylin 的最小 C locale 可能把中文显示成八进制转义；必须请求原样清单。
+ARCHIVE_NAMES="$(tar --quoting-style=literal -tzf "$ARCHIVE_FILE")"
+grep -Fxq "$PACKAGE_NAME/文档OCR助手完整版" <<<"$ARCHIVE_NAMES"
+grep -Fxq "$PACKAGE_NAME/_internal/build-info.json" <<<"$ARCHIVE_NAMES"
+```
+
+`tar -tzf` 在 `LC_ALL=C` 下可能把 `文档OCR助手完整版` 显示为 `\346\226...`。这只是清单的转义显示，不代表归档乱码；如果直接用普通 `grep`，会误报“缺少主程序”。使用 `--quoting-style=literal` 后再进行精确匹配。
+
+归档前至少检查：
+
+```bash
+test -x "$PACKAGE_ROOT/文档OCR助手完整版"
+test -f "$PACKAGE_ROOT/_internal/build-info.json"
+test ! -e "$PACKAGE_ROOT/app"
+if find "$PACKAGE_ROOT" -maxdepth 1 -type f -name '启动*.sh' | grep -q .; then
+  echo "绿色版不应依赖启动脚本" >&2
+  exit 1
+fi
+```
+
+最终归档必须解压到同时包含中文和空格的新目录再测试，不能只测试构建目录：
+
+```bash
+PORTABLE_TEST="/tmp/KOS/桌面/文档 OCR 绿色版测试"
+mkdir -p "$PORTABLE_TEST"
+tar -xzf "$ARCHIVE_FILE" -C "$PORTABLE_TEST"
+PACKAGE_ROOT="$PORTABLE_TEST/$PACKAGE_NAME"
+MAIN_EXECUTABLE="$PACKAGE_ROOT/文档OCR助手完整版"
+
+test -x "$MAIN_EXECUTABLE"
+file "$MAIN_EXECUTABLE"
+"$MAIN_EXECUTABLE" --cli --version
+HOME="$PORTABLE_TEST/home" "$PACKAGE_ROOT/安装快捷方式.sh"
+QT_QPA_PLATFORM=offscreen \
+  DOCUMENT_OCR_UI_SMOKE_SCREENSHOT="$PORTABLE_TEST/gui.png" \
+  "$MAIN_EXECUTABLE"
+test -s "$PORTABLE_TEST/gui.png"
+```
+
+还必须从这个解压目录执行 OCR、页面方向、表格和 DOCX 转换。这样才能同时发现 PyInstaller 中文路径、Qt 插件相对路径、LibreOffice 子进程库路径以及快捷方式 `Exec=` 引号问题。
 
 ## x86_64 离线组件
 
@@ -116,6 +230,12 @@ bash scripts/build_kylin_offline.sh --edition full
 
 ## 在 Apple Silicon Mac 上构建 ARM64
 
+### 当前脚本状态
+
+当前 `scripts/build_kylin_arm64_inside.sh` 和 `scripts/build_kylin_arm64_docker.sh` 仍保留旧版 `app/...`、启动脚本和 `.run` 自解压流程。它们可用于复现旧包，但不要把旧 `.run` 结构直接当作新的绿色版发布。
+
+旧版复现命令为：
+
 ```bash
 docker pull --platform linux/arm64 macrosan/kylin:v10-sp1
 cd /absolute/path/document-ocr-assistant
@@ -143,11 +263,103 @@ chmod +x document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run
 ./document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run --cli input.pdf -o ./ocr-output
 ```
 
+### ARM64 改为绿色目录版
+
+下次在 Apple Silicon Mac 重新打 Kylin ARM64 包时，推荐先让 ARM64 构建脚本与已验证的 x86_64 绿色方案对齐。不要只修改输出扩展名，必须同时修改目录组装、主程序路径、Qt 库路径和最终容器验收。
+
+`scripts/build_kylin_arm64_inside.sh` 的迁移要点：
+
+1. 将应用名改为根目录中文程序名：
+
+   ```bash
+   APP_NAME="文档OCR助手完整版"
+   ARCHIVE_FILE="$ROOT/dist/$PACKAGE_NAME.tar.gz"
+   ```
+
+2. 用 PyInstaller onedir 内容直接组装根目录：
+
+   ```bash
+   cp -a "$PYI_DIST/$APP_NAME/." "$PACKAGE_ROOT/"
+   rm -rf "$PYI_DIST/$APP_NAME"
+   mkdir -p "$PACKAGE_ROOT/assets" "$PACKAGE_ROOT/models/ppocrv6-medium" \
+     "$PACKAGE_ROOT/models/table" "$PACKAGE_ROOT/models/orientation"
+   ```
+
+3. 把 ARM64 的 `libGL.so.1`、`libGLX.so.0`、`libGLdispatch.so.0` 放到 `$PACKAGE_ROOT/_internal/`，不能继续写入 `app/$APP_NAME/_internal/`。
+4. 不再复制 `启动文档OCR助手.sh` 和 `文档OCR助手命令行.sh`。保留 `安装快捷方式.sh`，并让 GUI、CLI、OCR、方向和 Office 测试都直接调用：
+
+   ```bash
+   MAIN_EXECUTABLE="$PACKAGE_ROOT/$APP_NAME"
+   "$MAIN_EXECUTABLE" --cli --version
+   "$MAIN_EXECUTABLE" --cli input.pdf -o ./ocr-output
+   ```
+
+5. 保留 `packaging/runtime_hooks/pyi_rth_pyside2_unicode_path.py`。这个运行时钩子负责避免 PySide2/Qt5 在中文安装路径下写入错误的绝对插件路径，不能因取消启动脚本而删除。
+6. 删除复制 `自解压头-kylin-arm64.sh` 和拼接 `.run` 的步骤，改为在 ARM64 Kylin 容器内执行：
+
+   ```bash
+   tar -czf "$ARCHIVE_FILE" -C "$ROOT/dist" "$PACKAGE_NAME"
+   ARCHIVE_NAMES="$(tar --quoting-style=literal -tzf "$ARCHIVE_FILE")"
+   grep -Fxq "$PACKAGE_NAME/$APP_NAME" <<<"$ARCHIVE_NAMES"
+   grep -Fxq "$PACKAGE_NAME/_internal/build-info.json" <<<"$ARCHIVE_NAMES"
+   sha256sum "$ARCHIVE_FILE"
+   ```
+
+`scripts/build_kylin_arm64_docker.sh` 的最终门禁也要改成读取 tar.gz。必须在新 Kylin ARM64 容器的 `/tmp/KOS/桌面/文档 OCR 绿色版测试` 中解压，之后直接调用根目录主程序，不能继续测试源码挂载目录中的启动脚本或 `.run`：
+
+```bash
+PORTABLE_TEST="/tmp/KOS/桌面/文档 OCR 绿色版测试"
+mkdir -p "$PORTABLE_TEST"
+tar -xzf "/workspace/dist/$DOCUMENT_OCR_PACKAGE_NAME.tar.gz" -C "$PORTABLE_TEST"
+PACKAGE_ROOT="$PORTABLE_TEST/$DOCUMENT_OCR_PACKAGE_NAME"
+MAIN_EXECUTABLE="$PACKAGE_ROOT/文档OCR助手完整版"
+
+test "$(uname -m)" = "aarch64"
+test -x "$MAIN_EXECUTABLE"
+test -f "$PACKAGE_ROOT/_internal/build-info.json"
+test ! -e "$PACKAGE_ROOT/app"
+"$MAIN_EXECUTABLE" --cli --version
+```
+
+然后继续在同一个解压目录测试：
+
+- PP-OCRv6 Medium 图片 OCR；
+- 0/90/180/270° 页面方向；
+- SLANet-plus 表格；
+- 随包 ARM64 LibreOffice 的 `--headless --version` 和 DOCX 转换；
+- `安装快捷方式.sh` 生成的 desktop 文件，确认 `Exec=".../文档OCR助手完整版"` 对中文空格路径有引号；
+- `QT_QPA_PLATFORM=offscreen` 的 GUI 截图。
+
+迁移完成后的目标产物应为：
+
+```text
+dist/document-ocr-assistant-0.2.0-kylin-v10-arm64-full.tar.gz
+```
+
+同时把以下发布辅助逻辑中的 ARM64 扩展名从 `.run` 更新为 `.tar.gz`：
+
+- `scripts/create_release_checksums.py`
+- `scripts/release_audit.py` 的预期资产集合
+- Release 上传命令或 CI 配置
+
+这些调整应与 ARM64 脚本迁移放在同一个提交中；在 ARM64 tar.gz 完成干净容器验收前，不要删除线上仍可用的旧 `.run`。
+
+迁移后的 Kylin ARM64 真机用法与 x86_64 相同：
+
+```bash
+tar -xzf document-ocr-assistant-0.2.0-kylin-v10-arm64-full.tar.gz
+cd document-ocr-assistant-0.2.0-kylin-v10-arm64-full
+chmod +x 文档OCR助手完整版 安装快捷方式.sh
+./文档OCR助手完整版 --cli --version
+# 预期包含：(full, kylin-v10, arm64)
+./文档OCR助手完整版
+```
+
 ## 常见故障
 
 - x86_64 主程序不能执行：确认完整解压 tar.gz、主程序具有执行权限，并用 `uname -m` 确认系统为 `x86_64`；不要只复制主程序文件。
-- ARM64 `.run` 立即退出：先在终端运行并查看错误；确认已 `chmod +x`，再用 `uname -m` 核对架构。
-- ARM64 双击没有窗口：在终端运行最终 `.run` 查看 Qt/XCB 报错，并确认当前会话是 Kylin 图形桌面而非纯终端环境。
+- ARM64 旧 `.run` 立即退出：优先迁移为本文的 tar.gz 绿色目录版；排查旧包时先在终端运行，确认已 `chmod +x`，再用 `uname -m` 核对架构。
+- ARM64 双击没有窗口：在终端直接运行解压目录根部主程序查看 Qt/XCB 报错，并确认当前会话是 Kylin 图形桌面而非纯终端环境。
 - `Exec format error`：构建容器架构错误，x86_64 与 ARM64 文件不能混用。
 - `GLIBC_x.y not found`：构建基础系统比目标系统新；必须使用 Kylin V10 基础镜像重新冻结。
 - Qt 报 XCB 库缺失：在 Kylin 桌面安装系统的 `libxkbcommon-x11`、`xcb-util`、`xcb-util-image`、`xcb-util-keysyms`、`xcb-util-renderutil`、`xcb-util-wm` 和 `mesa-libGL`。
