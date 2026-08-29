@@ -52,10 +52,13 @@ def main() -> int:
             "本构建仅支持 Kylin V10 x86_64，同时包含图形界面和命令行工具。",
         ]
     elif args.platform == "kylin-arm64":
+        executable = "文档OCR助手OCR版" if args.edition == "ocr" else "文档OCR助手完整版"
         lines += [
             "",
-            "图形界面：双击“启动文档OCR助手.sh”，或先运行“安装快捷方式.sh”。",
-            "命令行：./文档OCR助手命令行.sh input.pdf -o ./ocr-output",
+            f"图形界面：解压完整 tar.gz 后，双击根目录中的“{executable}”。",
+            f"命令行：./{executable} --cli input.pdf -o ./ocr-output",
+            "快捷方式：运行“安装快捷方式.sh”，会在当前用户的应用菜单和桌面中创建入口。",
+            "便携使用：整个解压目录可移动；不能只复制主程序，必须保留 _internal、models、bin、assets 等附件目录。",
             "本构建仅支持 Kylin V10 ARM64，同时包含图形界面和命令行工具。",
         ]
     args.output.parent.mkdir(parents=True, exist_ok=True)

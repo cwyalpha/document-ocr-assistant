@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APPLICATIONS="$HOME/.local/share/applications"
+INSTALL_HOME="${DOCUMENT_OCR_INSTALL_HOME:-$HOME}"
+APPLICATIONS="$INSTALL_HOME/.local/share/applications"
 BUILD_INFO="$ROOT/_internal/build-info.json"
 if [ ! -f "$BUILD_INFO" ]; then BUILD_INFO="$ROOT/build-info.json"; fi
 EDITION="$(sed -n 's/.*"edition"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$BUILD_INFO" | head -n 1)"
@@ -39,9 +40,21 @@ StartupWMClass=$APP_NAME
 EOF
 chmod +x "$DESKTOP_FILE"
 
-DESKTOP_DIR="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+DESKTOP_DIR="${DOCUMENT_OCR_DESKTOP_DIR:-}"
+if [ -z "$DESKTOP_DIR" ]; then
+  DESKTOP_DIR="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+fi
+if [ -z "$DESKTOP_DIR" ] || [ ! -d "$DESKTOP_DIR" ]; then
+  for candidate in "$INSTALL_HOME/桌面" "$INSTALL_HOME/Desktop"; do
+    if [ -d "$candidate" ]; then
+      DESKTOP_DIR="$candidate"
+      break
+    fi
+  done
+fi
 if [ -n "$DESKTOP_DIR" ] && [ -d "$DESKTOP_DIR" ]; then
   cp "$DESKTOP_FILE" "$DESKTOP_DIR/$APP_NAME.desktop"
   chmod +x "$DESKTOP_DIR/$APP_NAME.desktop"
+  echo "桌面快捷方式已安装：$DESKTOP_DIR/$APP_NAME.desktop"
 fi
-echo "快捷方式已安装：$DESKTOP_FILE"
+echo "应用菜单快捷方式已安装：$DESKTOP_FILE"

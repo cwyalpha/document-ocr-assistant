@@ -84,8 +84,16 @@ if [ "$DOCUMENT_OCR_EDITION" = "full" ]; then
     -o "$PORTABLE_TEST/office-output" --no-table
   grep -R -q "Kylin ARM64 LibreOffice bundled conversion test" "$PORTABLE_TEST/office-output"
 fi
-HOME="$PORTABLE_TEST/home" "$PACKAGE_ROOT/安装快捷方式.sh"
-test -f "$PORTABLE_TEST/home/.local/share/applications/document-ocr-assistant-$DOCUMENT_OCR_EDITION.desktop"
+INSTALL_HOME="$PORTABLE_TEST/install-home"
+DESKTOP_DIR="$INSTALL_HOME/桌面"
+mkdir -p "$DESKTOP_DIR"
+DOCUMENT_OCR_INSTALL_HOME="$INSTALL_HOME" \
+DOCUMENT_OCR_DESKTOP_DIR="$DESKTOP_DIR" \
+  "$PACKAGE_ROOT/安装快捷方式.sh"
+test -f "$INSTALL_HOME/.local/share/applications/document-ocr-assistant-$DOCUMENT_OCR_EDITION.desktop"
+DESKTOP_LABEL="文档OCR助手 OCR版"
+if [ "$DOCUMENT_OCR_EDITION" = "full" ]; then DESKTOP_LABEL="文档OCR助手 完整版"; fi
+test -f "$DESKTOP_DIR/$DESKTOP_LABEL.desktop"
 DOCUMENT_OCR_UI_SMOKE_SCREENSHOT="$PORTABLE_TEST/gui.png" \
   QT_QPA_PLATFORM=offscreen "$MAIN_EXECUTABLE"
 test -s "$PORTABLE_TEST/gui.png"

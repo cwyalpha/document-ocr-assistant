@@ -8,7 +8,7 @@ if [ "$EDITION" != "full" ]; then
   echo "[error] Kylin ARM64 当前只构建带图形界面和 LibreOffice 的 full 版本。" >&2
   exit 2
 fi
-APP_NAME="document-ocr-assistant-full"
+APP_NAME="文档OCR助手完整版"
 PYTHON="${PYTHON_BIN:-/opt/python310/bin/python3.10}"
 BUILD_ROOT="$ROOT/build/kylin-arm64"
 PYI_DIST="$BUILD_ROOT/pyi-dist"
@@ -20,7 +20,8 @@ TABLE_MODEL="$CACHE_DIR/slanet-plus.onnx"
 ORIENTATION_MODEL="$CACHE_DIR/orientation/rapid_orientation.onnx"
 PACKAGE_NAME="document-ocr-assistant-$VERSION-kylin-v10-arm64-$EDITION"
 PACKAGE_ROOT="$ROOT/dist/$PACKAGE_NAME"
-RUN_PATH="$ROOT/dist/$PACKAGE_NAME.run"
+ARCHIVE_FILE="$ROOT/dist/$PACKAGE_NAME.tar.gz"
+LEGACY_RUN_FILE="$ROOT/dist/$PACKAGE_NAME.run"
 CHECKSUM_PATH="$ROOT/dist/SHA256SUMS-kylin-arm64-$EDITION.txt"
 BUILD_INFO="$BUILD_ROOT/metadata/$EDITION/build-info.json"
 
@@ -54,7 +55,7 @@ QT_QPA_PLATFORM=offscreen "$PYTHON" -m pytest -q
 "$PYTHON" -m compileall -q "$ROOT/src" "$ROOT/scripts" "$ROOT/tests"
 
 rm -rf "$PYI_DIST" "$PYI_WORK" "$TEST_ROOT" "$PACKAGE_ROOT"
-rm -f "$RUN_PATH" "$CHECKSUM_PATH"
+rm -f "$ARCHIVE_FILE" "$LEGACY_RUN_FILE" "$CHECKSUM_PATH"
 mkdir -p "$PYI_DIST" "$PYI_WORK" "$TEST_ROOT" "$PACKAGE_ROOT"
 
 "$PYTHON" "$ROOT/scripts/write_build_info.py" "$BUILD_INFO" \
@@ -71,34 +72,30 @@ DOCUMENT_OCR_APP_NAME="$APP_NAME" \
   --workpath "$PYI_WORK" \
   "$ROOT/packaging/document_ocr_assistant.spec"
 
+cp -a "$PYI_DIST/$APP_NAME/." "$PACKAGE_ROOT/"
+rm -rf "$PYI_DIST/$APP_NAME"
 mkdir -p \
-  "$PACKAGE_ROOT/app" \
   "$PACKAGE_ROOT/assets" \
   "$PACKAGE_ROOT/models/ppocrv6-medium" \
   "$PACKAGE_ROOT/models/table" \
   "$PACKAGE_ROOT/models/orientation"
-mv "$PYI_DIST/$APP_NAME" "$PACKAGE_ROOT/app/$APP_NAME"
 for qt_runtime_library in libGL.so.1 libGLX.so.0 libGLdispatch.so.0; do
   source_library="/usr/lib64/$qt_runtime_library"
   if [ ! -e "$source_library" ]; then
     echo "[error] Qt 图形运行库不存在：$source_library" >&2
     exit 1
   fi
-  cp -L "$source_library" "$PACKAGE_ROOT/app/$APP_NAME/_internal/$qt_runtime_library"
+  cp -L "$source_library" "$PACKAGE_ROOT/_internal/$qt_runtime_library"
 done
 cp "$ROOT/assets/app-icon.svg" "$PACKAGE_ROOT/assets/app-icon.svg"
 cp "$OCR_MODELS/"*.onnx "$PACKAGE_ROOT/models/ppocrv6-medium/"
 cp "$TABLE_MODEL" "$PACKAGE_ROOT/models/table/slanet-plus.onnx"
 cp "$ORIENTATION_MODEL" "$PACKAGE_ROOT/models/orientation/rapid_orientation.onnx"
-cp "$BUILD_INFO" "$PACKAGE_ROOT/build-info.json"
-cp "$ROOT/packaging/启动文档OCR助手.sh" "$PACKAGE_ROOT/启动文档OCR助手.sh"
-cp "$ROOT/packaging/文档OCR助手命令行.sh" "$PACKAGE_ROOT/文档OCR助手命令行.sh"
 cp "$ROOT/packaging/安装快捷方式.sh" "$PACKAGE_ROOT/安装快捷方式.sh"
 "$PYTHON" "$ROOT/scripts/write_package_readme.py" "$PACKAGE_ROOT/使用说明.txt" \
   --platform kylin-arm64 --edition "$EDITION"
 chmod +x \
-  "$PACKAGE_ROOT/启动文档OCR助手.sh" \
-  "$PACKAGE_ROOT/文档OCR助手命令行.sh" \
+  "$PACKAGE_ROOT/$APP_NAME" \
   "$PACKAGE_ROOT/安装快捷方式.sh"
 
 "$PYTHON" "$ROOT/scripts/bundle_kylin_libreoffice.py" \
@@ -106,7 +103,35 @@ chmod +x \
   --output-root "$PACKAGE_ROOT/bin/libreoffice" \
   --unrar /usr/bin/unrar
 
-MAIN_EXECUTABLE="$PACKAGE_ROOT/app/$APP_NAME/$APP_NAME"
+MAIN_EXECUTABLE="$PACKAGE_ROOT/$APP_NAME"
+REQUIRED_PORTABLE_PATHS=(
+  "$MAIN_EXECUTABLE"
+  "$PACKAGE_ROOT/_internal/build-info.json"
+  "$PACKAGE_ROOT/models/ppocrv6-medium/PP-OCRv6_det_medium.onnx"
+  "$PACKAGE_ROOT/models/ppocrv6-medium/PP-OCRv6_rec_medium.onnx"
+  "$PACKAGE_ROOT/models/ppocrv6-medium/ch_ppocr_mobile_v2.0_cls_mobile.onnx"
+  "$PACKAGE_ROOT/models/table/slanet-plus.onnx"
+  "$PACKAGE_ROOT/models/orientation/rapid_orientation.onnx"
+  "$PACKAGE_ROOT/bin/libreoffice/program/soffice"
+  "$PACKAGE_ROOT/bin/unrar/unrar"
+  "$PACKAGE_ROOT/assets/app-icon.svg"
+  "$PACKAGE_ROOT/安装快捷方式.sh"
+  "$PACKAGE_ROOT/使用说明.txt"
+)
+for required_path in "${REQUIRED_PORTABLE_PATHS[@]}"; do
+  if [ ! -e "$required_path" ]; then
+    echo "[error] Kylin ARM64 绿色版缺少必要文件：$required_path" >&2
+    exit 1
+  fi
+done
+if [ -d "$PACKAGE_ROOT/app" ]; then
+  echo "[error] Kylin ARM64 绿色版不应包含 app 子目录。" >&2
+  exit 1
+fi
+if find "$PACKAGE_ROOT" -maxdepth 1 -type f -name '启动*.sh' | grep -q .; then
+  echo "[error] Kylin ARM64 绿色版不应依赖启动脚本。" >&2
+  exit 1
+fi
 if ! file "$MAIN_EXECUTABLE" | grep -q "ARM aarch64"; then
   echo "[error] 冻结主程序不是 ARM64：$(file "$MAIN_EXECUTABLE")" >&2
   exit 1
@@ -128,10 +153,10 @@ fi
 # PyInstaller's stock Qt5 runtime hook writes an absolute path to qt.conf with
 # Latin-1. Verify our relative-prefix hook using the same kind of Chinese path
 # reported by Kylin desktop users.
-UNICODE_PACKAGE_PARENT="$TEST_ROOT/KOS/桌面"
+UNICODE_PACKAGE_PARENT="$TEST_ROOT/KOS/桌面/文档 OCR 绿色版测试"
 mkdir -p "$UNICODE_PACKAGE_PARENT"
 cp -al "$PACKAGE_ROOT" "$UNICODE_PACKAGE_PARENT/"
-UNICODE_MAIN_EXECUTABLE="$UNICODE_PACKAGE_PARENT/$PACKAGE_NAME/app/$APP_NAME/$APP_NAME"
+UNICODE_MAIN_EXECUTABLE="$UNICODE_PACKAGE_PARENT/$PACKAGE_NAME/$APP_NAME"
 UNICODE_VERSION_OUTPUT="$("$UNICODE_MAIN_EXECUTABLE" --cli --version)"
 if [[ "$UNICODE_VERSION_OUTPUT" != *"($EDITION, kylin-v10, arm64)"* ]]; then
   echo "[error] ARM64 冻结程序未通过中文路径版本验证：$UNICODE_VERSION_OUTPUT" >&2
@@ -149,7 +174,7 @@ SMOKE_DOCX="$TEST_ROOT/kylin-arm64-office.docx"
 "$PYTHON" "$ROOT/scripts/create_kylin_arm64_smoke_input.py" "$SMOKE_IMAGE"
 "$PYTHON" "$ROOT/scripts/create_office_smoke_input.py" "$SMOKE_DOCX"
 
-"$PACKAGE_ROOT/文档OCR助手命令行.sh" \
+"$MAIN_EXECUTABLE" --cli \
   "$SMOKE_IMAGE" -o "$TEST_ROOT/ocr-output" --no-table
 if ! grep -R -q "Kylin ARM64" "$TEST_ROOT/ocr-output"; then
   echo "[error] ARM64 冻结程序没有识别出 Kylin ARM64。" >&2
@@ -158,7 +183,7 @@ fi
 
 "$PYTHON" "$ROOT/scripts/create_release_test_materials.py" "$TEST_ROOT/materials"
 for angle in 0 90 180 270; do
-  "$PACKAGE_ROOT/文档OCR助手命令行.sh" \
+  "$MAIN_EXECUTABLE" --cli \
     "$TEST_ROOT/materials/orientation-$angle.png" \
     -o "$TEST_ROOT/orientation-$angle" \
     --report-json "$TEST_ROOT/orientation-$angle.json" \
@@ -185,23 +210,53 @@ for source_angle, correction in expected.items():
 print("[orientation] ARM64 frozen 0/90/180/270 passed")
 PY
 
+TABLE_REPORT="$TEST_ROOT/table-result.json"
+DOCUMENT_OCR_PIPELINE_SMOKE_INPUT="$TEST_ROOT/materials/table.png" \
+DOCUMENT_OCR_PIPELINE_SMOKE_OUTPUT="$TABLE_REPORT" \
+  "$MAIN_EXECUTABLE"
+"$PYTHON" - "$TABLE_REPORT" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if report.get("ocr_blocks", 0) < 1 or report.get("tables", 0) < 1:
+    raise SystemExit(f"Kylin ARM64 table smoke failed: {report}")
+print(f"[table] ARM64 frozen tables={report['tables']} passed")
+PY
+
 "$PACKAGE_ROOT/bin/libreoffice/program/soffice" --headless --version
-"$PACKAGE_ROOT/文档OCR助手命令行.sh" \
+"$MAIN_EXECUTABLE" --cli \
   "$SMOKE_DOCX" -o "$TEST_ROOT/office-output" --no-table
 if ! grep -R -q "Kylin ARM64 LibreOffice bundled conversion test" "$TEST_ROOT/office-output"; then
   echo "[error] 随包 LibreOffice 未完成 DOCX 转换。" >&2
   exit 1
 fi
 
-cp "$ROOT/packaging/自解压头-kylin-arm64.sh" "$RUN_PATH"
-tar -czf - -C "$ROOT/dist" "$PACKAGE_NAME" >> "$RUN_PATH"
-chmod +x "$RUN_PATH"
+tar -czf "$ARCHIVE_FILE" -C "$ROOT/dist" "$PACKAGE_NAME"
+ARCHIVE_NAMES="$(tar --quoting-style=literal -tzf "$ARCHIVE_FILE")"
+if ! grep -Fxq "$PACKAGE_NAME/$APP_NAME" <<<"$ARCHIVE_NAMES"; then
+  echo "[error] Kylin ARM64 绿色版压缩包根目录缺少主程序。" >&2
+  exit 1
+fi
+if ! grep -Fxq "$PACKAGE_NAME/_internal/build-info.json" <<<"$ARCHIVE_NAMES"; then
+  echo "[error] Kylin ARM64 绿色版压缩包缺少构建元数据。" >&2
+  exit 1
+fi
+if grep -q "^$PACKAGE_NAME/app/" <<<"$ARCHIVE_NAMES"; then
+  echo "[error] Kylin ARM64 绿色版压缩包不应包含 app 子目录。" >&2
+  exit 1
+fi
+if grep -Eq "^$PACKAGE_NAME/启动.*\.sh$" <<<"$ARCHIVE_NAMES"; then
+  echo "[error] Kylin ARM64 绿色版压缩包不应依赖启动脚本。" >&2
+  exit 1
+fi
 
 (
   cd "$ROOT/dist"
-  sha256sum "$(basename "$RUN_PATH")" > "$(basename "$CHECKSUM_PATH")"
+  sha256sum "$(basename "$ARCHIVE_FILE")" > "$(basename "$CHECKSUM_PATH")"
 )
 
 echo "[done] 目录包：$PACKAGE_ROOT"
-echo "[done] GUI 自解压包：$RUN_PATH"
+echo "[done] 绿色版压缩包：$ARCHIVE_FILE"
 echo "[done] SHA-256：$CHECKSUM_PATH"

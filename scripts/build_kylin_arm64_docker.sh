@@ -15,9 +15,7 @@ fi
 BUILDER_IMAGE="${KYLIN_ARM64_BUILDER_IMAGE:-document-ocr-kylin-arm64-gui-builder:latest}"
 BASE_IMAGE="${KYLIN_ARM64_BASE_IMAGE:-macrosan/kylin:v10-sp1}"
 PACKAGE_NAME="document-ocr-assistant-$VERSION-kylin-v10-arm64-$EDITION"
-PACKAGE_ROOT="$ROOT/dist/$PACKAGE_NAME"
-RUN_FILE="$ROOT/dist/$PACKAGE_NAME.run"
-TEST_ROOT="$ROOT/build/kylin-arm64/clean-container-test"
+ARCHIVE_FILE="$ROOT/dist/$PACKAGE_NAME.tar.gz"
 
 if [ "$(uname -s)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
   echo "[error] 本脚本用于 Apple Silicon Mac 上的 ARM64 Docker 构建。" >&2
@@ -42,69 +40,98 @@ docker build \
 docker run --rm \
   --platform linux/arm64 \
   -e DOCUMENT_OCR_BUILD_EDITION="$EDITION" \
+  -e LANG=C.UTF-8 \
+  -e LC_ALL=C.UTF-8 \
+  -e PYTHONUTF8=1 \
+  -e PYTHONIOENCODING=UTF-8 \
   -v "$ROOT:/workspace" \
   "$BUILDER_IMAGE" \
   /bin/bash /workspace/scripts/build_kylin_arm64_inside.sh
 
-rm -rf "$TEST_ROOT"
-mkdir -p "$TEST_ROOT"
 docker run --rm \
   --platform linux/arm64 \
   -e DOCUMENT_OCR_PACKAGE_NAME="$PACKAGE_NAME" \
   -e DOCUMENT_OCR_EDITION="$EDITION" \
-  -v "$ROOT:/workspace" \
+  -v "$ROOT:/workspace:ro" \
   "$BASE_IMAGE" \
   /bin/bash -lc '
 set -euo pipefail
-PACKAGE="/workspace/dist/$DOCUMENT_OCR_PACKAGE_NAME"
 TESTS="/workspace/build/kylin-arm64/tests"
-OUTPUT="/workspace/build/kylin-arm64/clean-container-test"
+PORTABLE_TEST="/tmp/KOS/桌面/文档 OCR 绿色版测试"
+mkdir -p "$PORTABLE_TEST"
+tar -xzf "/workspace/dist/$DOCUMENT_OCR_PACKAGE_NAME.tar.gz" -C "$PORTABLE_TEST"
+PACKAGE_ROOT="$PORTABLE_TEST/$DOCUMENT_OCR_PACKAGE_NAME"
+APP_NAME="文档OCR助手完整版"
+MAIN_EXECUTABLE="$PACKAGE_ROOT/$APP_NAME"
 
 test "$(uname -m)" = "aarch64"
-VERSION_OUTPUT="$("$PACKAGE/文档OCR助手命令行.sh" --version)"
+test -x "$MAIN_EXECUTABLE"
+test -f "$PACKAGE_ROOT/_internal/build-info.json"
+test ! -e "$PACKAGE_ROOT/app"
+if find "$PACKAGE_ROOT" -maxdepth 1 -type f -name "启动*.sh" | grep -q .; then
+  echo "[error] ARM64 绿色版不应依赖启动脚本。" >&2
+  exit 1
+fi
+VERSION_OUTPUT="$(LC_ALL=C LANG=C "$MAIN_EXECUTABLE" --cli --version)"
 if [[ "$VERSION_OUTPUT" != *"($DOCUMENT_OCR_EDITION, kylin-v10, arm64)"* ]]; then
-  echo "[error] ARM64 冻结程序版本验证失败：$VERSION_OUTPUT" >&2
+  echo "[error] ARM64 绿色版解压或版本验证失败：$VERSION_OUTPUT" >&2
   exit 1
 fi
 
-DOCUMENT_OCR_UI_SMOKE_SCREENSHOT="$OUTPUT/gui.png" \
-  QT_QPA_PLATFORM=offscreen "$PACKAGE/启动文档OCR助手.sh"
-test -s "$OUTPUT/gui.png"
-
-"$PACKAGE/文档OCR助手命令行.sh" \
+"$MAIN_EXECUTABLE" --cli \
   "$TESTS/kylin-arm64-ocr.png" \
-  -o "$OUTPUT/ocr-output" \
+  -o "$PORTABLE_TEST/ocr-output" \
   --no-table
-grep -R -q "Kylin ARM64" "$OUTPUT/ocr-output"
+grep -R -q "Kylin ARM64" "$PORTABLE_TEST/ocr-output"
 
-"$PACKAGE/bin/libreoffice/program/soffice" --headless --version \
-  > "$OUTPUT/libreoffice-version.txt"
-grep -q "LibreOffice 6.0.6.1" "$OUTPUT/libreoffice-version.txt"
-"$PACKAGE/文档OCR助手命令行.sh" \
+for angle in 0 90 180 270; do
+  case "$angle" in
+    0) correction=0 ;;
+    90) correction=270 ;;
+    180) correction=180 ;;
+    270) correction=90 ;;
+  esac
+  "$MAIN_EXECUTABLE" --cli "$TESTS/materials/orientation-$angle.png" \
+    -o "$PORTABLE_TEST/orientation-$angle" \
+    --report-json "$PORTABLE_TEST/orientation-$angle.json" --no-table
+  grep -R -Eq "Document|OCR" "$PORTABLE_TEST/orientation-$angle"
+  grep -q "\"applied_angle\": $correction" "$PORTABLE_TEST/orientation-$angle.json"
+done
+
+DOCUMENT_OCR_PIPELINE_SMOKE_INPUT="$TESTS/materials/table.png" \
+DOCUMENT_OCR_PIPELINE_SMOKE_OUTPUT="$PORTABLE_TEST/table-result.json" \
+  "$MAIN_EXECUTABLE"
+grep -Eq "\"ocr_blocks\": [1-9][0-9]*" "$PORTABLE_TEST/table-result.json"
+grep -Eq "\"tables\": [1-9][0-9]*" "$PORTABLE_TEST/table-result.json"
+
+"$PACKAGE_ROOT/bin/libreoffice/program/soffice" --headless --version \
+  > "$PORTABLE_TEST/libreoffice-version.txt"
+grep -q "LibreOffice 6.0.6.1" "$PORTABLE_TEST/libreoffice-version.txt"
+"$MAIN_EXECUTABLE" --cli \
   "$TESTS/kylin-arm64-office.docx" \
-  -o "$OUTPUT/office-output" \
+  -o "$PORTABLE_TEST/office-output" \
   --no-table
-grep -R -q "Kylin ARM64 LibreOffice bundled conversion test" "$OUTPUT/office-output"
+grep -R -q "Kylin ARM64 LibreOffice bundled conversion test" "$PORTABLE_TEST/office-output"
 
-RUN_TEST=/tmp/KOS/桌面/document-ocr-arm64-run-test
-rm -rf "$RUN_TEST"
-mkdir -p "$RUN_TEST"
-cp "/workspace/dist/$DOCUMENT_OCR_PACKAGE_NAME.run" "$RUN_TEST/"
-cd "$RUN_TEST"
-RUN_FILE="$RUN_TEST/$DOCUMENT_OCR_PACKAGE_NAME.run"
-chmod +x "$RUN_FILE"
-DOCUMENT_OCR_UI_SMOKE_SCREENSHOT="$OUTPUT/run-gui.png" \
-  QT_QPA_PLATFORM=offscreen "$RUN_FILE"
-test -s "$OUTPUT/run-gui.png"
-RUN_VERSION="$($RUN_FILE --cli --version)"
-if [[ "$RUN_VERSION" != *"($DOCUMENT_OCR_EDITION, kylin-v10, arm64)"* ]]; then
-  echo "[error] ARM64 .run 自解压或版本验证失败：$RUN_VERSION" >&2
-  exit 1
-fi
+INSTALL_HOME="$PORTABLE_TEST/install-home"
+DESKTOP_DIR="$INSTALL_HOME/桌面"
+mkdir -p "$DESKTOP_DIR"
+DOCUMENT_OCR_INSTALL_HOME="$INSTALL_HOME" \
+DOCUMENT_OCR_DESKTOP_DIR="$DESKTOP_DIR" \
+  "$PACKAGE_ROOT/安装快捷方式.sh"
+MENU_FILE="$INSTALL_HOME/.local/share/applications/document-ocr-assistant-$DOCUMENT_OCR_EDITION.desktop"
+DESKTOP_FILE="$DESKTOP_DIR/文档OCR助手 完整版.desktop"
+test -x "$MENU_FILE"
+test -x "$DESKTOP_FILE"
+grep -Fq "Exec=\"$MAIN_EXECUTABLE\"" "$MENU_FILE"
+grep -Fq "Icon=$PACKAGE_ROOT/assets/app-icon.svg" "$MENU_FILE"
+
+LC_ALL=C LANG=C \
+DOCUMENT_OCR_UI_SMOKE_SCREENSHOT="$PORTABLE_TEST/gui.png" \
+QT_QPA_PLATFORM=offscreen "$MAIN_EXECUTABLE"
+test -s "$PORTABLE_TEST/gui.png"
 '
 
-test -s "$RUN_FILE"
-echo "[done] Kylin ARM64 干净容器 GUI、CLI、OCR、Office 测试通过：$TEST_ROOT"
-echo "[done] Kylin ARM64 GUI .run 自解压测试通过。"
-echo "[done] Kylin ARM64 中文路径 GUI、CLI 回归测试通过。"
-echo "[done] 发布包：$RUN_FILE"
+test -s "$ARCHIVE_FILE"
+echo "[done] Kylin ARM64 绿色版在中文和空格路径完成 GUI、CLI、OCR、方向、表格、Office 和桌面快捷方式测试。"
+echo "[done] 发布包：$ARCHIVE_FILE"
