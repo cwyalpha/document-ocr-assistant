@@ -145,6 +145,19 @@ def audit_run(path: Path, audit: Audit, edition: str) -> None:
                     audit.contents(f"{path.name}:{member.name}", stream.read())
 
 
+def audit_tar(path: Path, audit: Audit, edition: str) -> None:
+    with tarfile.open(path, mode="r:gz") as archive:
+        for member in archive.getmembers():
+            audit.name(member.name, edition=edition)
+            suffix = PurePosixPath(member.name).suffix.lower()
+            if member.isfile() and member.size <= 2 * 1024 * 1024 and (
+                suffix in TEXT_SUFFIXES or member.name.endswith("build-info.json")
+            ):
+                stream = archive.extractfile(member)
+                if stream:
+                    audit.contents(f"{path.name}:{member.name}", stream.read())
+
+
 def audit_dmg(path: Path, audit: Audit, edition: str) -> None:
     if os.uname().sysname != "Darwin":
         raise RuntimeError("DMG 递归审计必须在 macOS 执行")
@@ -176,7 +189,10 @@ def audit_assets(dist: Path, version: str, audit: Audit) -> None:
     expected = asset_names(version)
     present = sorted(
         path.name for path in dist.iterdir()
-        if path.is_file() and path.suffix.lower() in {".dmg", ".zip", ".run"}
+        if path.is_file() and (
+            path.suffix.lower() in {".dmg", ".zip", ".run"}
+            or path.name.endswith(".tar.gz")
+        )
         and path.name.startswith(f"document-ocr-assistant-{version}-")
     )
     if sorted(expected) != present:
@@ -186,10 +202,12 @@ def audit_assets(dist: Path, version: str, audit: Audit) -> None:
         return
     for name in expected:
         path = dist / name
-        edition = "ocr" if name.rsplit(".", 1)[0].endswith("-ocr") else "full"
+        edition = "ocr" if "-ocr." in name else "full"
         before = len(audit.build_infos)
         if path.suffix == ".zip":
             audit_zip(path, audit, edition)
+        elif path.name.endswith(".tar.gz"):
+            audit_tar(path, audit, edition)
         elif path.suffix == ".run":
             audit_run(path, audit, edition)
         else:

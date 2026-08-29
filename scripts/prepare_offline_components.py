@@ -294,7 +294,11 @@ def verify_libreoffice(soffice: Path, output_root: Path) -> None:
         environment["XDG_CONFIG_HOME"] = str(home / ".config")
         # Mirror the frozen application's runtime library path when checking
         # the bundled child process before the final package is assembled.
-        internal_library_dirs = sorted((output_root / "app").glob("*/_internal"))
+        internal_library_dirs = []
+        root_internal = output_root / "_internal"
+        if root_internal.is_dir():
+            internal_library_dirs.append(root_internal)
+        internal_library_dirs.extend(sorted((output_root / "app").glob("*/_internal")))
         if internal_library_dirs:
             library_path = os.pathsep.join(str(path) for path in internal_library_dirs)
             existing_library_path = environment.get("LD_LIBRARY_PATH")

@@ -41,6 +41,16 @@ def main() -> int:
             "3. 截图识别需要“录屏与系统录音”权限；授权后完全退出并重新启动应用。",
             "4. 本构建仅支持 Apple Silicon arm64（M 系列 Mac）。",
         ]
+    elif args.platform == "kylin-x86_64":
+        executable = "文档OCR助手OCR版" if args.edition == "ocr" else "文档OCR助手完整版"
+        lines += [
+            "",
+            f"图形界面：解压完整 tar.gz 后，双击根目录中的“{executable}”。",
+            f"命令行：./{executable} --cli input.pdf -o ./ocr-output",
+            "快捷方式：运行“安装快捷方式.sh”，会在当前用户的应用菜单中创建入口。",
+            "便携使用：整个解压目录可移动；不能只复制主程序，必须保留 _internal、models、bin、assets 等附件目录。",
+            "本构建仅支持 Kylin V10 x86_64，同时包含图形界面和命令行工具。",
+        ]
     elif args.platform == "kylin-arm64":
         lines += [
             "",

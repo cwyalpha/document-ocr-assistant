@@ -52,7 +52,7 @@ if (-not (Test-Path $OrientationModel)) {
 & $VenvPython (Join-Path $Root "scripts\create_windows_icon.py") (Join-Path $Root "assets\app-icon.svg") (Join-Path $Root "assets\app-icon.ico")
 
 Remove-Item -LiteralPath $PyiDist,$PyiWork,$PackageRoot -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force $PyiDist,$PyiWork,$PackageRoot,(Join-Path $PackageRoot "app"),(Join-Path $PackageRoot "assets") | Out-Null
+New-Item -ItemType Directory -Force $PyiDist,$PyiWork,$PackageRoot,(Join-Path $PackageRoot "assets") | Out-Null
 & $VenvPython (Join-Path $Root "scripts\write_build_info.py") $BuildInfo --edition $Edition --version $Version --platform windows --architecture x86_64
 $env:DOCUMENT_OCR_BUILD_EDITION = $Edition
 $env:DOCUMENT_OCR_BUILD_INFO = $BuildInfo
@@ -62,12 +62,9 @@ Remove-Item Env:\DOCUMENT_OCR_BUILD_EDITION,Env:\DOCUMENT_OCR_BUILD_INFO,Env:\DO
 if ($LASTEXITCODE) { throw "PyInstaller Windows 构建失败。" }
 
 $BuiltApp = Join-Path $PyiDist $AppName
-Copy-Item -Path (Join-Path $BuiltApp "*") -Destination (Join-Path $PackageRoot "app") -Recurse -Force
-Copy-Item $BuildInfo (Join-Path $PackageRoot "app\build-info.json")
+Copy-Item -Path (Join-Path $BuiltApp "*") -Destination $PackageRoot -Recurse -Force
 Copy-Item (Join-Path $Root "assets\app-icon.svg") (Join-Path $PackageRoot "assets\app-icon.svg")
 Copy-Item (Join-Path $Root "assets\app-icon.ico") (Join-Path $PackageRoot "assets\app-icon.ico")
-$Launcher = Join-Path $PackageRoot "启动$AppName.bat"
-"@echo off`r`nchcp 65001 >nul`r`nstart `"`" `"%~dp0app\$AppName.exe`"`r`n" | Set-Content -LiteralPath $Launcher -Encoding UTF8
 
 & $VenvPython (Join-Path $Root "scripts\prepare_windows_runtime.py") `
     --components-dir $ComponentsDir `
@@ -79,7 +76,9 @@ $Launcher = Join-Path $PackageRoot "启动$AppName.bat"
 @"
 文档OCR助手 Windows x86_64 $Edition 版
 
-运行：双击“启动$AppName.bat”或 app\$AppName.exe。
+运行：解压完整压缩包后，双击同目录中的“$AppName.exe”。
+快捷方式：可右键“$AppName.exe”创建快捷方式，再把快捷方式放到桌面或其他位置。
+便携使用：整个解压目录可移动到任意位置；不能只复制 EXE，必须保留 _internal、models、bin、assets 等附件目录。
 Office 策略：$(if ($Edition -eq "ocr") { "仅支持图片/PDF，不包含 pywin32、LibreOffice 或 Word/WPS 转换。" } else { "自动调用本机 Microsoft Word 或 WPS Office；本包不包含 LibreOffice。" })
 OCR 与表格识别：PP-OCRv6 Medium + SLANet-plus，全部使用 ONNX Runtime 离线运行。
 支持图片、PDF、DOC/DOCX/WPS、文件夹及 ZIP/RAR/7Z/TAR/TAR.GZ/TGZ。
@@ -89,7 +88,32 @@ OCR 与表格识别：PP-OCRv6 Medium + SLANet-plus，全部使用 ONNX Runtime 
 
 $SmokeScreenshot = Join-Path $Root "build\windows\windows-ui-smoke.png"
 $env:DOCUMENT_OCR_UI_SMOKE_SCREENSHOT = $SmokeScreenshot
-$Executable = Join-Path $PackageRoot "app\$AppName.exe"
+$Executable = Join-Path $PackageRoot "$AppName.exe"
+
+$RequiredPortablePaths = @(
+    $Executable,
+    (Join-Path $PackageRoot "_internal"),
+    (Join-Path $PackageRoot "_internal\build-info.json"),
+    (Join-Path $PackageRoot "models\ppocrv6-medium\PP-OCRv6_det_medium.onnx"),
+    (Join-Path $PackageRoot "models\ppocrv6-medium\PP-OCRv6_rec_medium.onnx"),
+    (Join-Path $PackageRoot "models\table\slanet-plus.onnx"),
+    (Join-Path $PackageRoot "models\orientation\rapid_orientation.onnx"),
+    (Join-Path $PackageRoot "bin\archive\unrar.exe"),
+    (Join-Path $PackageRoot "assets\app-icon.ico"),
+    (Join-Path $PackageRoot "使用说明.txt")
+)
+foreach ($RequiredPath in $RequiredPortablePaths) {
+    if (-not (Test-Path -LiteralPath $RequiredPath)) {
+        throw "Windows 绿色版缺少必要文件：$RequiredPath"
+    }
+}
+if (Test-Path -LiteralPath (Join-Path $PackageRoot "app")) {
+    throw "Windows 绿色版不应再包含 app 子目录。"
+}
+$BatchLaunchers = Get-ChildItem -LiteralPath $PackageRoot -File -Filter "*.bat"
+if ($BatchLaunchers) {
+    throw "Windows 绿色版不应依赖 BAT 启动文件：$($BatchLaunchers.Name -join ', ')"
+}
 
 function Invoke-FrozenCli {
     param(
@@ -212,7 +236,27 @@ $ZipPath = Join-Path $Root "dist\$AssetStem.zip"
 Remove-Item -LiteralPath $ZipPath -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path $PackageRoot -DestinationPath $ZipPath -CompressionLevel Optimal
 
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$Archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+try {
+    $ArchivePrefix = "$AssetStem/"
+    $ArchiveNames = @($Archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+    $ExpectedExecutable = "$ArchivePrefix$AppName.exe"
+    if ($ExpectedExecutable -notin $ArchiveNames) {
+        throw "Windows 发布 ZIP 根目录缺少 EXE：$ExpectedExecutable"
+    }
+    if ($ArchiveNames | Where-Object { $_ -like "${ArchivePrefix}app/*" }) {
+        throw "Windows 发布 ZIP 不应再包含 app 子目录。"
+    }
+    if ($ArchiveNames | Where-Object { $_ -like "${ArchivePrefix}*.bat" }) {
+        throw "Windows 发布 ZIP 不应包含 BAT 启动文件。"
+    }
+} finally {
+    $Archive.Dispose()
+}
+
 Write-Host "[done] $PackageRoot"
 Write-Host "[done] $ZipPath"
+Write-Host "[done] Portable root executable: $Executable"
 Write-Host "[done] UI screenshot: $SmokeScreenshot"
 Write-Host "[done] Frozen ONNX OCR/table smoke: $PipelineSmokeReport"

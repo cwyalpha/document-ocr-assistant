@@ -6,7 +6,7 @@
 
 | 目标 | Docker 平台 | 产物 | 界面 | Office 组件 |
 | --- | --- | --- | --- | --- |
-| Kylin V10 x86_64 | `linux/amd64` | `document-ocr-assistant-0.2.0-kylin-v10-x86_64-full.run` | PySide6 图形界面和 CLI | 离线组件目录中的 LibreOffice 7.6 x86_64 |
+| Kylin V10 x86_64 | `linux/amd64` | `document-ocr-assistant-0.2.0-kylin-v10-x86_64-full.tar.gz` | 根目录原生程序、PySide6 图形界面和 CLI | 离线组件目录中的 LibreOffice 7.6 x86_64 |
 | Kylin V10 ARM64 | `linux/arm64` | `document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run` | Qt 5.15 / PySide2 图形界面和 CLI | Kylin ARM64 仓库中的 LibreOffice 6.0.6.1 |
 
 ARM64 使用在 Kylin V10 容器内源码构建的 Qt 5.15.2 与 PySide2 5.15.2.1，以保持 glibc 2.28 兼容；程序同时提供图形界面和命令行入口。
@@ -16,7 +16,7 @@ ARM64 使用在 Kylin V10 容器内源码构建的 Qt 5.15.2 与 PySide2 5.15.2.
 1. Docker Desktop 或 Docker Engine 已启动，并至少预留 12 GB 磁盘和 8 GB 内存。
 2. 源码路径和输出磁盘应支持单个 2 GB 以上文件。
 3. 首次构建 builder 镜像需要访问 Kylin 软件仓库、Python 官方下载和 PyPI；最终应用运行不需要联网。
-4. 发布前必须在目标架构容器或真机执行最终 `.run --version`。只测试解压前的 `dist/.../app` 目录不能发现自解压头问题。
+4. 发布前必须在目标架构容器或真机解压最终发布文件，并执行其中的主程序 `--cli --version`；不能只测试 PyInstaller 的临时输出目录。
 
 仓库的 `.gitattributes` 已强制所有 `.sh` 和 Dockerfile 使用 LF。若从旧的 Windows 工作区复制源码，请先确认 Shell 脚本不是 CRLF，否则容器会出现 `$'do\r'` 或 `bad interpreter` 错误。
 
@@ -77,24 +77,28 @@ bash scripts/build_kylin_x86_64_docker.sh --edition full
 2. 运行单元测试并冻结 PySide6 客户端；
 3. 装入 PP-OCRv6 Medium、SLANet-plus、方向模型、LibreOffice、UnRAR 和 7-Zip；
 4. 测试 ONNX OCR、合并单元格表格、四向旋转、DOCX 转换和 offscreen GUI；
-5. 在干净目录执行最终 `.run --cli --version`，确认自解压入口和架构元数据。
+5. 在带中文和空格的干净目录解压最终 tar.gz，测试根目录主程序、OCR、Office、快捷方式、offscreen GUI 和架构元数据。
 
 输出位于：
 
 ```text
-dist/document-ocr-assistant-0.2.0-kylin-v10-x86_64-full.run
-dist/SHA256SUMS-kylin-x86_64-full.txt
+dist/document-ocr-assistant-0.2.0-kylin-v10-x86_64-full.tar.gz
 ```
 
 在 Kylin x86_64 真机验证：
 
 ```bash
-chmod +x document-ocr-assistant-0.2.0-kylin-v10-x86_64-full.run
-./document-ocr-assistant-0.2.0-kylin-v10-x86_64-full.run --cli --version
+tar -xzf document-ocr-assistant-0.2.0-kylin-v10-x86_64-full.tar.gz
+cd document-ocr-assistant-0.2.0-kylin-v10-x86_64-full
+chmod +x 文档OCR助手完整版 安装快捷方式.sh
+./文档OCR助手完整版 --cli --version
 # 预期包含：(full, kylin-v10, x86_64)
 
 # 启动图形界面
-./document-ocr-assistant-0.2.0-kylin-v10-x86_64-full.run
+./文档OCR助手完整版
+
+# 可选：创建当前用户的应用菜单和桌面入口
+./安装快捷方式.sh
 ```
 
 ## 在 Kylin x86_64 真机直接构建
@@ -108,7 +112,7 @@ export OCR_BUILD_VENV=/absolute/path/ocr-build-venv
 bash scripts/build_kylin_offline.sh --edition full
 ```
 
-推荐使用 Docker 脚本，因为它固定了 Kylin V10、Python 和依赖版本，并自动执行最终 `.run` 验证。
+推荐使用 Docker 脚本，因为它固定了 Kylin V10、Python 和依赖版本，并自动解压最终 tar.gz 验证绿色目录版。
 
 ## 在 Apple Silicon Mac 上构建 ARM64
 
@@ -141,10 +145,11 @@ chmod +x document-ocr-assistant-0.2.0-kylin-v10-arm64-full.run
 
 ## 常见故障
 
-- `.run` 立即退出：先在终端运行并查看错误；确认已 `chmod +x`，再用 `uname -m` 核对架构。
+- x86_64 主程序不能执行：确认完整解压 tar.gz、主程序具有执行权限，并用 `uname -m` 确认系统为 `x86_64`；不要只复制主程序文件。
+- ARM64 `.run` 立即退出：先在终端运行并查看错误；确认已 `chmod +x`，再用 `uname -m` 核对架构。
 - ARM64 双击没有窗口：在终端运行最终 `.run` 查看 Qt/XCB 报错，并确认当前会话是 Kylin 图形桌面而非纯终端环境。
 - `Exec format error`：构建容器架构错误，x86_64 与 ARM64 文件不能混用。
 - `GLIBC_x.y not found`：构建基础系统比目标系统新；必须使用 Kylin V10 基础镜像重新冻结。
 - Qt 报 XCB 库缺失：在 Kylin 桌面安装系统的 `libxkbcommon-x11`、`xcb-util`、`xcb-util-image`、`xcb-util-keysyms`、`xcb-util-renderutil`、`xcb-util-wm` 和 `mesa-libGL`。
 - Office 转换失败：确认使用 `full` 版，且 LibreOffice 的 CPU 架构与目标机器一致。
-- Docker 中构建成功、真机失败：不要只复制解压目录；应在真机先运行最终 `.run --version`，并用 `sha256sum -c` 校验下载文件。
+- Docker 中构建成功、真机失败：应在真机完整解压最终发布文件，并直接运行包内主程序 `--cli --version`；同时核对发布页提供的 SHA-256。

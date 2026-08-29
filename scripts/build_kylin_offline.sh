@@ -22,6 +22,7 @@ TABLE_MODEL="${DOCUMENT_OCR_TABLE_MODEL:-$CACHE_DIR/slanet-plus.onnx}"
 ORIENTATION_MODEL="$CACHE_DIR/orientation/rapid_orientation.onnx"
 PACKAGE_NAME="document-ocr-assistant-$VERSION-kylin-v10-x86_64-$EDITION"
 PACKAGE_ROOT="$ROOT/dist/$PACKAGE_NAME"
+ARCHIVE_FILE="$ROOT/dist/$PACKAGE_NAME.tar.gz"
 BUILD_INFO="$ROOT/build/kylin-x86_64/metadata/$EDITION/build-info.json"
 
 if [ "$(uname -s)" != "Linux" ] || [ "$(uname -m)" != "x86_64" ]; then
@@ -42,12 +43,15 @@ if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(not ((3, 10) <= sys.version_
 fi
 
 if [ ! -x "$BUILD_VENV/bin/python" ]; then
-  "$PYTHON_BIN" -m venv "$BUILD_VENV"
+  "$PYTHON_BIN" -m venv --system-site-packages "$BUILD_VENV"
 fi
 PYTHON="$BUILD_VENV/bin/python"
 "$PYTHON" -m pip install --upgrade pip wheel setuptools
 "$PYTHON" -m pip install -r "$ROOT/requirements-kylin.txt" -r "$ROOT/requirements-table.txt"
-"$PYTHON" -m pip install "pyinstaller==6.18.0" "pyinstaller-hooks-contrib==2026.0"
+"$PYTHON" -m pip install \
+  "pyinstaller==6.18.0" \
+  "pyinstaller-hooks-contrib==2026.0" \
+  "pytest>=7.4,<9"
 
 if [ ! -f "$TABLE_MODEL" ]; then
   "$PYTHON" "$ROOT/scripts/fetch_table_model.py" "$TABLE_MODEL"
@@ -64,6 +68,7 @@ fi
 QT_QPA_PLATFORM=offscreen "$PYTHON" -m pytest -q
 
 rm -rf "$ROOT/build/pyinstaller" "$ROOT/dist/$APP_NAME" "$PACKAGE_ROOT"
+rm -f "$ARCHIVE_FILE" "$ROOT/dist/SHA256SUMS-kylin-x86_64-$EDITION.txt"
 mkdir -p "$PACKAGE_ROOT"
 "$PYTHON" "$ROOT/scripts/write_build_info.py" "$BUILD_INFO" \
   --edition "$EDITION" --version "$VERSION" --platform kylin-v10 --architecture x86_64
@@ -77,13 +82,12 @@ DOCUMENT_OCR_BUILD_VERSION="$VERSION" \
   --workpath "$ROOT/build/pyinstaller" \
   "$ROOT/packaging/document_ocr_assistant.spec"
 
-mkdir -p "$PACKAGE_ROOT/app" "$PACKAGE_ROOT/assets"
-mv "$ROOT/dist/$APP_NAME" "$PACKAGE_ROOT/app/$APP_NAME"
-cp "$BUILD_INFO" "$PACKAGE_ROOT/build-info.json"
+cp -a "$ROOT/dist/$APP_NAME/." "$PACKAGE_ROOT/"
+rm -rf "$ROOT/dist/$APP_NAME"
+mkdir -p "$PACKAGE_ROOT/assets"
 cp "$ROOT/assets/app-icon.svg" "$PACKAGE_ROOT/assets/app-icon.svg"
-cp "$ROOT/packaging/启动文档OCR助手.sh" "$PACKAGE_ROOT/启动文档OCR助手.sh"
 cp "$ROOT/packaging/安装快捷方式.sh" "$PACKAGE_ROOT/安装快捷方式.sh"
-chmod +x "$PACKAGE_ROOT/启动文档OCR助手.sh" "$PACKAGE_ROOT/安装快捷方式.sh"
+chmod +x "$PACKAGE_ROOT/$APP_NAME" "$PACKAGE_ROOT/安装快捷方式.sh"
 
 COMPONENT_ARGS=(
   --components-dir "$COMPONENTS_DIR"
@@ -99,7 +103,36 @@ fi
 "$PYTHON" "$ROOT/scripts/write_package_readme.py" "$PACKAGE_ROOT/使用说明.txt" \
   --platform kylin-x86_64 --edition "$EDITION"
 
-MAIN_EXECUTABLE="$PACKAGE_ROOT/app/$APP_NAME/$APP_NAME"
+MAIN_EXECUTABLE="$PACKAGE_ROOT/$APP_NAME"
+REQUIRED_PORTABLE_PATHS=(
+  "$MAIN_EXECUTABLE"
+  "$PACKAGE_ROOT/_internal/build-info.json"
+  "$PACKAGE_ROOT/models/ppocrv6-medium/PP-OCRv6_det_medium.onnx"
+  "$PACKAGE_ROOT/models/ppocrv6-medium/PP-OCRv6_rec_medium.onnx"
+  "$PACKAGE_ROOT/models/table/slanet-plus.onnx"
+  "$PACKAGE_ROOT/models/orientation/rapid_orientation.onnx"
+  "$PACKAGE_ROOT/bin/unrar/unrar"
+  "$PACKAGE_ROOT/assets/app-icon.svg"
+  "$PACKAGE_ROOT/安装快捷方式.sh"
+  "$PACKAGE_ROOT/使用说明.txt"
+)
+if [ "$EDITION" = "full" ]; then
+  REQUIRED_PORTABLE_PATHS+=("$PACKAGE_ROOT/bin/libreoffice/program/soffice")
+fi
+for required_path in "${REQUIRED_PORTABLE_PATHS[@]}"; do
+  if [ ! -e "$required_path" ]; then
+    echo "[error] Kylin 绿色版缺少必要文件：$required_path" >&2
+    exit 1
+  fi
+done
+if [ -d "$PACKAGE_ROOT/app" ]; then
+  echo "[error] Kylin 绿色版不应再包含 app 子目录。" >&2
+  exit 1
+fi
+if find "$PACKAGE_ROOT" -maxdepth 1 -type f -name '启动*.sh' | grep -q .; then
+  echo "[error] Kylin 绿色版不应依赖启动脚本。" >&2
+  exit 1
+fi
 VERSION_OUTPUT="$("$MAIN_EXECUTABLE" --cli --version)"
 if [[ "$VERSION_OUTPUT" != *"($EDITION, kylin-v10, x86_64)"* ]]; then
   echo "[error] 冻结程序 build metadata 不正确：$VERSION_OUTPUT" >&2
@@ -152,23 +185,25 @@ if [ "$EDITION" = "ocr" ] && find "$PACKAGE_ROOT" -iname '*libreoffice*' -o -ina
   exit 1
 fi
 
-RUN_FILE="$ROOT/dist/$PACKAGE_NAME.run"
-rm -f "$RUN_FILE"
-cat > "$RUN_FILE" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-SELF="$0"
-LINE="$(awk '/^__DOCUMENT_OCR_PAYLOAD__$/ {print NR + 1; exit}' "$SELF")"
-TARGET="$(cd "$(dirname "$SELF")" && pwd)"
-PACKAGE="$(tail -n +"$LINE" "$SELF" | tar -tzf - | sed -n '1s#/.*##p')"
-tail -n +"$LINE" "$SELF" | tar -xzf - -C "$TARGET"
-exec "$TARGET/$PACKAGE/启动文档OCR助手.sh" "$@"
-__DOCUMENT_OCR_PAYLOAD__
-EOF
-tar -czf - -C "$ROOT/dist" "$PACKAGE_NAME" >> "$RUN_FILE"
-chmod +x "$RUN_FILE"
-
-(cd "$ROOT/dist" && sha256sum "$(basename "$RUN_FILE")" > "SHA256SUMS-kylin-x86_64-$EDITION.txt")
+tar -czf "$ARCHIVE_FILE" -C "$ROOT/dist" "$PACKAGE_NAME"
+# GNU tar quotes non-ASCII names as octal escapes under the minimal C locale
+# used by some Kylin/Docker images.  Request literal names so the checks below
+# validate the actual UTF-8 executable and helper script paths.
+ARCHIVE_NAMES="$(tar --quoting-style=literal -tzf "$ARCHIVE_FILE")"
+if ! grep -Fxq "$PACKAGE_NAME/$APP_NAME" <<<"$ARCHIVE_NAMES"; then
+  echo "[error] Kylin 绿色版压缩包根目录缺少主程序。" >&2
+  exit 1
+fi
+if grep -q "^$PACKAGE_NAME/app/" <<<"$ARCHIVE_NAMES"; then
+  echo "[error] Kylin 绿色版压缩包不应包含 app 子目录。" >&2
+  exit 1
+fi
+if grep -Eq "^$PACKAGE_NAME/启动.*\.sh$" <<<"$ARCHIVE_NAMES"; then
+  echo "[error] Kylin 绿色版压缩包不应依赖启动脚本。" >&2
+  exit 1
+fi
+ARCHIVE_SHA256="$(sha256sum "$ARCHIVE_FILE" | awk '{print $1}')"
 
 echo "[done] 目录包：$PACKAGE_ROOT"
-echo "[done] 自解压包：$RUN_FILE"
+echo "[done] 绿色版压缩包：$ARCHIVE_FILE"
+echo "[done] SHA-256：$ARCHIVE_SHA256"
