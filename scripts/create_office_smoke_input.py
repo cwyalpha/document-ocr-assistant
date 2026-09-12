@@ -22,10 +22,10 @@ RELATIONSHIPS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 </Relationships>
 """
 
-DOCUMENT = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+DOCUMENT_TEMPLATE = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
-    <w:p><w:r><w:t>Kylin ARM64 LibreOffice bundled conversion test</w:t></w:r></w:p>
+    <w:p><w:r><w:t>{platform_label} LibreOffice bundled conversion test</w:t></w:r></w:p>
     <w:p><w:r><w:t>Document OCR Assistant 2026</w:t></w:r></w:p>
     <w:sectPr/>
   </w:body>
@@ -36,13 +36,17 @@ DOCUMENT = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create a synthetic DOCX smoke input")
     parser.add_argument("output", type=Path)
+    parser.add_argument("--platform-label", default="Kylin ARM64")
     args = parser.parse_args()
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("[Content_Types].xml", CONTENT_TYPES)
         archive.writestr("_rels/.rels", RELATIONSHIPS)
-        archive.writestr("word/document.xml", DOCUMENT)
+        archive.writestr(
+            "word/document.xml",
+            DOCUMENT_TEMPLATE.format(platform_label=args.platform_label),
+        )
     print(f"[office-smoke] {output}")
     return 0
 

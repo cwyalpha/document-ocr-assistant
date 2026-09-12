@@ -13,6 +13,7 @@ def office_text(platform_name: str, edition: str) -> str:
         "windows": "本包为完整版；DOC/DOCX/WPS 转换调用本机 Microsoft Word 或 WPS Office。",
         "kylin-x86_64": "本包为完整版；随包携带固定版本并校验哈希的 LibreOffice 7.6.x。",
         "kylin-arm64": "本包为完整版；随包携带已验证的 Kylin ARM64 LibreOffice 6.0.6.1。",
+        "uos-arm64": "本包为完整版；随包携带已验证的 UOS ARM64 LibreOffice 6.4.7.2。",
     }[platform_name]
 
 
@@ -20,7 +21,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Write edition-specific package instructions")
     parser.add_argument("output", type=Path)
     parser.add_argument(
-        "--platform", choices=("macos", "windows", "kylin-x86_64", "kylin-arm64"), required=True
+        "--platform",
+        choices=("macos", "windows", "kylin-x86_64", "kylin-arm64", "uos-arm64"),
+        required=True,
     )
     parser.add_argument("--edition", choices=("ocr", "full"), required=True)
     args = parser.parse_args()
@@ -60,6 +63,16 @@ def main() -> int:
             "快捷方式：运行“安装快捷方式.sh”，会在当前用户的应用菜单和桌面中创建入口。",
             "便携使用：整个解压目录可移动；不能只复制主程序，必须保留 _internal、models、bin、assets 等附件目录。",
             "本构建仅支持 Kylin V10 ARM64，同时包含图形界面和命令行工具。",
+        ]
+    elif args.platform == "uos-arm64":
+        executable = "文档OCR助手OCR版" if args.edition == "ocr" else "文档OCR助手完整版"
+        lines += [
+            "",
+            f"图形界面：解压完整 tar.gz 后，双击根目录中的“{executable}”。",
+            f"命令行：./{executable} --cli input.pdf -o ./ocr-output",
+            "快捷方式：运行“安装快捷方式.sh”，会在当前用户的应用菜单和桌面中创建入口。",
+            "便携使用：整个解压目录可移动；不能只复制主程序，必须保留 _internal、models、bin、assets 等附件目录。",
+            "本构建仅支持统信 UOS V20 ARM64，同时包含图形界面和命令行工具。",
         ]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")

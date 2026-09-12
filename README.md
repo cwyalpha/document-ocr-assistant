@@ -52,8 +52,9 @@
 | Windows 10 / 11 | x86_64 | 图形界面、命令行 |
 | Kylin V10 | x86_64 | 图形界面、命令行 |
 | Kylin V10 | ARM64 / aarch64 | 图形界面、命令行 |
+| 统信 UOS V20 | ARM64 / aarch64 | 图形界面、命令行、随包 LibreOffice |
 
-Windows x86 和 Kylin x86 均指 64 位 x86_64，不提供 32 位版本。
+Windows x86 和 Kylin x86 均指 64 位 x86_64，不提供 32 位版本。UOS ARM64 的构建与验收方法见 [统信 UOS V20 ARM64 构建说明](docs/UOS_ARM64_DOCKER_TEST.md)。
 
 ## 识别引擎与隐私
 
